@@ -5,7 +5,6 @@
   --foreground: #4c4f69;
   --accent: #c4b5fd;
   --accent-pink: #fda4c8;
-  --accent-mint: #86efac;
   --border: #fce7f3;
 }
 
@@ -19,4 +18,33 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-nunito), "Segoe UI", sans-serif;
+}
+
+/* 파스텔 공통 클래스 */
+.pastel-page {
+  @apply min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-emerald-50;
+}
+
+.pastel-card {
+  @apply bg-white/90 border-2 border-pink-100 rounded-2xl shadow-lg shadow-purple-100;
+}
+
+.pastel-btn {
+  @apply bg-gradient-to-r from-pink-300 to-purple-300 hover:from-pink-400 hover:to-purple-400 text-white font-bold rounded-xl transition shadow-md;
+}
+
+.pastel-btn-sm {
+  @apply px-3 py-1.5 bg-gradient-to-r from-pink-200 to-purple-200 hover:from-pink-300 hover:to-purple-300 text-[#4c4f69] text-sm font-semibold rounded-xl transition border border-pink-100;
+}
+
+.pastel-input {
+  @apply w-full px-4 py-3 border-2 border-pink-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-200 bg-white/80 text-[#4c4f69];
+}
+
+.pastel-overlay {
+  @apply bg-white/90 backdrop-blur-md border-2 border-pink-100 shadow-lg shadow-purple-100 rounded-2xl;
+}
+
+.pastel-chat {
+  @apply bg-white/95 border-2 border-pink-100 rounded-2xl shadow-md p-4 text-[#4c4f69];
 }

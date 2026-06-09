@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRealtimeMessages } from "@/hooks/useRealtimeMessages";
-import { AllowedEmoji, Poll } from "@/types";
+import { AllowedEmoji } from "@/types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
-const ALLOWED_EMOJIS: AllowedEmoji[] = ["👏", "❤️", "😂", "🤔", "💡"];
+const ALLOWED_EMOJIS: AllowedEmoji[] = ["👏", "❤️", "😂", "🤔", "💡", "👍", "🔥", "🎉"];
 
 export default function JoinPage() {
   const params = useParams();
@@ -21,103 +21,63 @@ export default function JoinPage() {
   const [showQuestionInput, setShowQuestionInput] = useState(false);
   const [questionInput, setQuestionInput] = useState("");
 
-  const {
-    sendMessage,
-    sendReaction,
-    submitQuestion,
-    votePoll,
-    polls,
-    isConnected,
-  } = useRealtimeMessages(sessionId);
+  const { sendMessage, sendReaction, submitQuestion, votePoll, polls, isConnected } =
+    useRealtimeMessages(sessionId);
 
   const messageInputRef = useRef<HTMLInputElement>(null);
   const questionInputRef = useRef<HTMLInputElement>(null);
 
   const handleJoin = () => {
-    if (!nickname.trim()) {
-      alert("Please enter your nickname");
-      return;
-    }
+    if (!nickname.trim()) { alert("닉네임을 입력해주세요"); return; }
     setIsJoined(true);
     messageInputRef.current?.focus();
   };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !nickname.trim()) return;
-
     await sendMessage(nickname, chatInput);
     setChatInput("");
-    messageInputRef.current?.focus();
   };
 
   const handleEmojiClick = async (emoji: AllowedEmoji) => {
     await sendReaction(nickname, emoji);
-
     setRecentReactions((prev) => [...prev, emoji]);
-    setTimeout(() => {
-      setRecentReactions((prev) => prev.slice(1));
-    }, 1500);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSendMessage();
-    }
+    setTimeout(() => setRecentReactions((prev) => prev.slice(1)), 1500);
   };
 
   const handlePollVote = async (pollId: string, optionIndex: number) => {
-    if (currentPollVote[pollId]) return; // Already voted
-
+    if (currentPollVote[pollId] !== undefined) return;
     await votePoll(pollId, optionIndex);
     setCurrentPollVote((prev) => ({ ...prev, [pollId]: optionIndex }));
   };
 
   const handleSubmitQuestion = async () => {
-    if (!questionInput.trim() || !nickname.trim()) return;
-
+    if (!questionInput.trim()) return;
     await submitQuestion(nickname, questionInput);
     setQuestionInput("");
     setShowQuestionInput(false);
-    messageInputRef.current?.focus();
   };
 
   if (!isJoined) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-purple-50 to-blue-100">
-        <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-          <h1 className="text-3xl font-bold mb-2 text-gray-800">
-            Live Lecture
-          </h1>
-          <p className="text-gray-600 mb-6">입장할 닉네임을 입력해주세요</p>
+      <div className="pastel-page flex items-center justify-center px-4">
+        <div className="pastel-card p-8 max-w-md w-full">
+          <div className="text-4xl text-center mb-2">📱</div>
+          <h1 className="text-2xl font-extrabold text-[#4c4f69] text-center mb-1">연수 참여 ✨</h1>
+          <p className="text-gray-500 text-sm text-center mb-6">닉네임을 입력하고 참여하세요</p>
           <input
             type="text"
-            placeholder="Your nickname"
+            placeholder="이름 또는 닉네임"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === "Enter") handleJoin();
-            }}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            onKeyPress={(e) => e.key === "Enter" && handleJoin()}
+            className="pastel-input mb-4"
             autoFocus
           />
-          <button
-            onClick={handleJoin}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-lg transition duration-200"
-          >
-            입장
-          </button>
-          <div className="mt-4 text-center">
-            <p
-              className={`text-sm ${
-                isConnected ? "text-green-600" : "text-yellow-600"
-              }`}
-            >
-              {isConnected ? "✓ 실시간 연결됨" : "◐ 로컬 모드"}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Session: {sessionId.substring(0, 8)}...
-            </p>
-          </div>
+          <button onClick={handleJoin} className="pastel-btn w-full py-3">참여하기 🎉</button>
+          <p className={`text-xs text-center mt-4 font-semibold ${isConnected ? "text-emerald-400" : "text-amber-400"}`}>
+            {isConnected ? "● 실시간 연결됨" : "◐ 로컬 모드"}
+          </p>
         </div>
       </div>
     );
@@ -127,59 +87,35 @@ export default function JoinPage() {
   const alreadyVoted = activePoll ? currentPollVote[activePoll.id] !== undefined : false;
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-purple-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-white shadow-md p-4 border-b border-gray-200">
-        <div className="flex justify-between items-center">
+    <div className="flex flex-col h-screen pastel-page">
+      <div className="bg-white/80 backdrop-blur border-b-2 border-pink-100 p-4 shadow-sm">
+        <div className="flex justify-between items-center max-w-2xl mx-auto">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Live Lecture</h1>
-            <p className="text-sm text-gray-600">
-              반가워요, <span className="font-semibold">{nickname}</span>!
-            </p>
+            <h1 className="text-lg font-extrabold text-[#4c4f69]">🌸 연수 참여</h1>
+            <p className="text-sm text-gray-500">안녕, <span className="font-bold text-purple-400">{nickname}</span>!</p>
           </div>
-          <div className="text-right">
-            <p
-              className={`text-sm font-semibold ${
-                isConnected ? "text-green-600" : "text-yellow-600"
-              }`}
-            >
-              {isConnected ? "✓ 연결됨" : "◐ 로컬 모드"}
-            </p>
-          </div>
+          <span className={`text-xs font-semibold ${isConnected ? "text-emerald-400" : "text-amber-400"}`}>
+            {isConnected ? "● 연결됨" : "◐ 로컬"}
+          </span>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        <div className="max-w-2xl mx-auto">
-          {/* Active Poll */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        <div className="max-w-2xl mx-auto space-y-4">
           {activePoll && (
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-6 mb-6"
-            >
-              <h3 className="text-lg font-bold text-gray-800 mb-4">
-                실시간 투표
-              </h3>
-              <p className="text-gray-700 font-semibold mb-4">{activePoll.question}</p>
-
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="pastel-card p-5">
+              <h3 className="font-bold text-[#4c4f69] mb-2">📊 실시간 투표</h3>
+              <p className="text-gray-600 mb-4">{activePoll.question}</p>
               {alreadyVoted ? (
                 <div>
-                  <p className="text-sm text-gray-600 mb-3">✓ 투표 완료했습니다</p>
-                  <ResponsiveContainer width="100%" height={150}>
-                    <BarChart
-                      data={activePoll.options.map((opt, idx) => ({
-                        name: opt,
-                        votes: activePoll.votes[idx] || 0,
-                      }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
+                  <p className="text-sm text-emerald-400 mb-3 font-semibold">✓ 투표 완료!</p>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={activePoll.options.map((opt, idx) => ({ name: opt, votes: activePoll.votes[idx] || 0 }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#fce7f3" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9ca3af" }} />
+                      <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} />
                       <Tooltip />
-                      <Bar dataKey="votes" fill="#3b82f6" />
+                      <Bar dataKey="votes" fill="#c4b5fd" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -189,7 +125,7 @@ export default function JoinPage() {
                     <button
                       key={idx}
                       onClick={() => handlePollVote(activePoll.id, idx)}
-                      className="w-full px-4 py-3 bg-white border-2 border-blue-300 hover:bg-blue-50 hover:border-blue-500 text-gray-800 rounded-lg transition font-semibold"
+                      className="w-full px-4 py-3 pastel-card hover:border-purple-200 text-[#4c4f69] font-semibold text-sm transition"
                     >
                       {option}
                     </button>
@@ -199,36 +135,24 @@ export default function JoinPage() {
             </motion.div>
           )}
 
-          {/* Emoji & Reaction Section */}
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <p className="text-gray-600 mb-4 text-center">
-              이모티콘으로 반응해주세요
-            </p>
-            {/* Emoji Buttons */}
-            <div className="flex justify-center gap-3 mb-6">
+          <div className="pastel-card p-5">
+            <p className="text-gray-500 text-sm text-center mb-4">이모지로 반응해주세요 😊</p>
+            <div className="grid grid-cols-4 gap-3">
               {ALLOWED_EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => handleEmojiClick(emoji)}
-                  className="text-4xl hover:scale-125 transition transform duration-200 active:scale-100"
+                  className="text-3xl pastel-card py-3 hover:scale-110 transition active:scale-95"
                 >
                   {emoji}
                 </button>
               ))}
             </div>
-
-            {/* Recent Reactions Feedback */}
             {recentReactions.length > 0 && (
-              <div className="flex justify-center gap-2">
+              <div className="flex justify-center gap-2 mt-4">
                 <AnimatePresence>
                   {recentReactions.map((emoji, idx) => (
-                    <motion.div
-                      key={`${emoji}-${idx}`}
-                      initial={{ scale: 0, opacity: 1 }}
-                      animate={{ scale: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
-                      className="text-3xl"
-                    >
+                    <motion.div key={`${emoji}-${idx}`} initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} className="text-2xl">
                       {emoji}
                     </motion.div>
                   ))}
@@ -237,81 +161,44 @@ export default function JoinPage() {
             )}
           </div>
 
-          {/* Question Input Section */}
-          {showQuestionInput && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-6 mb-6"
-            >
-              <h3 className="text-lg font-bold text-gray-800 mb-3">
-                질문하기
-              </h3>
+          {showQuestionInput ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pastel-card p-5">
+              <h3 className="font-bold text-[#4c4f69] mb-3">🙋 질문하기</h3>
               <input
                 ref={questionInputRef}
                 type="text"
-                placeholder="질문을 입력해주세요..."
+                placeholder="질문을 입력하세요..."
                 value={questionInput}
                 onChange={(e) => setQuestionInput(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") handleSubmitQuestion();
-                }}
-                className="w-full px-4 py-3 border border-purple-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                onKeyPress={(e) => e.key === "Enter" && handleSubmitQuestion()}
+                className="pastel-input mb-3"
                 autoFocus
               />
               <div className="flex gap-2">
-                <button
-                  onClick={handleSubmitQuestion}
-                  disabled={!questionInput.trim()}
-                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg transition font-semibold"
-                >
-                  제출
-                </button>
-                <button
-                  onClick={() => {
-                    setShowQuestionInput(false);
-                    setQuestionInput("");
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition font-semibold"
-                >
-                  취소
-                </button>
+                <button onClick={handleSubmitQuestion} disabled={!questionInput.trim()} className="pastel-btn flex-1 py-2 text-sm disabled:opacity-50">등록</button>
+                <button onClick={() => { setShowQuestionInput(false); setQuestionInput(""); }} className="pastel-btn-sm flex-1">취소</button>
               </div>
             </motion.div>
-          )}
-
-          {!showQuestionInput && (
-            <button
-              onClick={() => {
-                setShowQuestionInput(true);
-                setTimeout(() => questionInputRef.current?.focus(), 100);
-              }}
-              className="w-full mb-6 px-4 py-3 bg-purple-100 hover:bg-purple-200 border-2 border-purple-300 text-purple-700 rounded-lg transition font-semibold"
-            >
-              ❓ 질문하기
+          ) : (
+            <button onClick={() => { setShowQuestionInput(true); setTimeout(() => questionInputRef.current?.focus(), 100); }} className="pastel-btn-sm w-full py-3">
+              🙋 질문하기
             </button>
           )}
         </div>
       </div>
 
-      {/* Chat Input Footer */}
-      <div className="bg-white shadow-lg border-t border-gray-200 p-4">
+      <div className="bg-white/80 backdrop-blur border-t-2 border-pink-100 p-4">
         <div className="max-w-2xl mx-auto flex gap-2">
           <input
             ref={messageInputRef}
             type="text"
-            placeholder="의견을 입력해주세요..."
+            placeholder="메시지 입력..."
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+            className="pastel-input flex-1 !py-2.5"
           />
-          <button
-            onClick={handleSendMessage}
-            disabled={!chatInput.trim()}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 px-6 rounded-lg transition duration-200"
-          >
+          <button onClick={handleSendMessage} disabled={!chatInput.trim()} className="pastel-btn px-5 py-2.5 disabled:opacity-50">
             전송
           </button>
         </div>

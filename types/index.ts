@@ -52,4 +52,4 @@ export interface SessionRecord {
   slideRequests: SlideControlRequest[];
 }
 
-export type AllowedEmoji = "👏" | "❤️" | "😂" | "🤔" | "💡";
+export type AllowedEmoji = "👏" | "❤️" | "😂" | "🤔" | "💡" | "👍" | "🔥" | "🎉";

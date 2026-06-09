@@ -33,19 +33,15 @@ export default function SessionsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
-      <div className="bg-white shadow-md p-6 border-b border-gray-200">
+    <div className="pastel-page">
+      <div className="bg-white/80 backdrop-blur border-b-2 border-pink-100 p-6 shadow-sm">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">지난 세션</h1>
-            <p className="text-gray-600 mt-1">모든 강의 기록을 조회하고 검색합니다</p>
+            <h1 className="text-2xl font-extrabold text-[#4c4f69]">🗃️ 지난 세션</h1>
+            <p className="text-gray-500 text-sm mt-1">강의 기록 조회 · 검색</p>
           </div>
-          <Link
-            href="/presenter"
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition"
-          >
-            새 세션 시작
+          <Link href="/presenter" className="pastel-btn px-5 py-2 text-sm">
+            ▶ 새 연수
           </Link>
         </div>
       </div>
@@ -59,7 +55,7 @@ export default function SessionsPage() {
             placeholder="닉네임, 채팅 내용, 질문으로 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="pastel-input"
           />
         </div>
 
@@ -118,7 +114,7 @@ export default function SessionsPage() {
                   href={`/sessions/${session.sessionId}`}
                   className="block"
                 >
-                  <div className="bg-white rounded-lg shadow hover:shadow-lg transition p-6 cursor-pointer border-l-4 border-blue-500">
+                  <div className="pastel-card hover:shadow-xl transition p-6 cursor-pointer border-l-4 border-purple-300">
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <h3 className="text-lg font-bold text-gray-800">
