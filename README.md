@@ -28,16 +28,15 @@ SUPABASE_ANON_KEY=sb_publishable_...
 
 ## 배포 (Render — 권장)
 
-Express + Socket.io는 [Render](https://render.com)에서 무료 배포 가능합니다.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/keymaker7/live-lecture-app)
 
-1. GitHub에 이 폴더 푸시
-2. Render → New Web Service → GitHub 연결
-3. 환경 변수 설정:
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-4. Deploy
+1. 위 버튼 클릭 → Render 로그인 → Deploy
+2. 환경 변수 입력:
+   - `SUPABASE_URL` = Supabase 대시보드 Project URL
+   - `SUPABASE_ANON_KEY` = `sb_publishable_...`
+3. 배포 완료 후 `https://slides-live-xxxx.onrender.com` 주소로 접속
 
-또는 `render.yaml` Blueprint 사용.
+> GitHub 푸시는 완료됨: https://github.com/keymaker7/live-lecture-app
 
 ## GitHub 푸시
 
