@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>연수 진행 중</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="present-page">
+  <div class="present-layout">
+    <aside class="overlay-panel" id="overlayPanel">
+      <div class="reaction-stream" id="reactionStream"></div>
+      <div class="chat-stream" id="chatStream"></div>
+      <div class="reaction-stats-bar" id="reactionStatsBar"></div>
+    </aside>
+
+    <main class="slide-area" id="slideArea">
+      <iframe id="slideFrame" class="hidden" allowfullscreen allow="autoplay; fullscreen"></iframe>
+      <div id="canvaContainer" class="canva-container hidden"></div>
+      <div class="slide-loading" id="slideLoading">슬라이드를 불러오는 중...</div>
+      <div class="slide-fallback hidden" id="slideFallback">
+        <div class="fallback-card">
+          <p class="fallback-title">슬라이드를 여기에 표시할 수 없습니다</p>
+          <p class="fallback-desc" id="fallbackDesc"></p>
+          <a id="fallbackLink" class="btn-primary" target="_blank" rel="noopener">새 탭에서 슬라이드 열기</a>
+        </div>
+      </div>
+
+      <!-- 활성 투표 오버레이 -->
+      <div class="poll-overlay hidden" id="pollOverlay">
+        <div class="poll-overlay-card">
+          <h3 id="pollOverlayQuestion">투표</h3>
+          <div class="poll-bars" id="pollBars"></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="qr-panel" id="qrPanel">
+      <button class="qr-toggle" id="qrToggle" title="QR 패널 접기/펼치기">◀</button>
+      <div class="qr-content">
+        <h3>참여하기</h3>
+        <div class="qr-code-wrap"><img id="qrImage" alt="QR 코드" /></div>
+        <p class="qr-hint">QR을 스캔하여 참여하세요</p>
+        <p class="qr-lan-hint" id="lanHint"></p>
+        <div class="participant-badge">
+          <span class="participant-icon">👥</span>
+          <span id="participantCount">0</span>명 접속 중
+        </div>
+        <button class="btn-copy" id="copyLinkBtn">링크 복사</button>
+        <p class="join-url" id="joinUrl"></p>
+      </div>
+    </aside>
+
+    <aside class="activity-panel collapsed" id="activityPanel">
+      <button class="activity-toggle" id="activityToggle" title="채팅 로그">💬</button>
+      <div class="activity-content">
+        <h4>채팅 로그</h4>
+        <div class="activity-list" id="activityList"></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 발표자 컨트롤 도크 -->
+  <div class="control-dock" id="controlDock">
+    <button class="dock-toggle" id="dockToggle">🛠️ 도구 ▲</button>
+    <div class="dock-body hidden" id="dockBody">
+      <div class="dock-tabs">
+        <button class="dock-tab active" data-tab="poll">📊 투표</button>
+        <button class="dock-tab" data-tab="questions">🙋 질문</button>
+        <button class="dock-tab" data-tab="timer">⏱️ 타이머</button>
+        <button class="dock-tab" data-tab="analytics">📈 분석</button>
+        <button class="dock-tab" data-tab="slides">📱 슬라이드</button>
+        <button class="dock-tab" data-tab="session">🗃️ 세션</button>
+      </div>
+
+      <div class="dock-panel active" id="panel-poll">
+        <input type="text" id="pollQuestion" placeholder="투표 질문" maxlength="100">
+        <div class="poll-options-input" id="pollOptionsInput">
+          <input type="text" class="poll-opt" placeholder="선택지 1" maxlength="50">
+          <input type="text" class="poll-opt" placeholder="선택지 2" maxlength="50">
+        </div>
+        <button class="btn-sm" id="addPollOption">+ 선택지</button>
+        <div class="dock-actions">
+          <button class="btn-primary btn-sm" id="createPollBtn">투표 시작</button>
+          <button class="btn-ghost btn-sm" id="closePollBtn">투표 종료</button>
+        </div>
+      </div>
+
+      <div class="dock-panel" id="panel-questions">
+        <div class="question-list" id="questionList"></div>
+      </div>
+
+      <div class="dock-panel" id="panel-timer">
+        <div class="timer-display" id="timerDisplay">00:00</div>
+        <input type="number" id="timerMinutes" min="1" max="120" value="5" placeholder="분">
+        <div class="dock-actions">
+          <button class="btn-primary btn-sm" id="timerStart">시작</button>
+          <button class="btn-ghost btn-sm" id="timerPause">정지</button>
+          <button class="btn-ghost btn-sm" id="timerReset">리셋</button>
+        </div>
+      </div>
+
+      <div class="dock-panel" id="panel-analytics">
+        <div class="chart-row">
+          <div class="chart-box">
+            <h5>📝 워드클라우드</h5>
+            <canvas id="wordCloudCanvas" width="280" height="160"></canvas>
+          </div>
+          <div class="chart-box">
+            <h5>🎯 집중도 (반응/30초)</h5>
+            <canvas id="focusChartCanvas" width="280" height="160"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="dock-panel" id="panel-slides">
+        <div class="slide-req-display">
+          <div class="slide-req-item">⏭ 다음 요청: <strong id="slideNextCount">0</strong></div>
+          <div class="slide-req-item">⏮ 이전 요청: <strong id="slidePrevCount">0</strong></div>
+        </div>
+        <button class="btn-ghost btn-sm" id="resetSlideReq">요청 초기화</button>
+      </div>
+
+      <div class="dock-panel" id="panel-session">
+        <div class="dock-actions">
+          <button class="btn-primary btn-sm" id="saveSessionBtn">세션 저장</button>
+        </div>
+        <input type="text" id="sessionSearch" placeholder="저장된 세션 검색..." maxlength="50">
+        <div class="session-list" id="sessionList"></div>
+      </div>
+    </div>
+  </div>
+
+  <header class="present-topbar">
+    <span class="present-title" id="presentTitle">연수</span>
+    <span class="slide-type-badge" id="slideTypeBadge"></span>
+    <span class="topbar-count">👥 <span id="topbarCount">0</span></span>
+    <span class="timer-badge hidden" id="timerBadge">⏱️ 00:00</span>
+    <div class="topbar-actions">
+      <button class="btn-ghost" id="fullscreenBtn">전체화면</button>
+      <a href="/" class="btn-ghost">종료</a>
+    </div>
+  </header>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/session-store.js"></script>
+  <script src="/js/present.js"></script>
+</body>
+</html>

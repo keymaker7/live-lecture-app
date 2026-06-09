@@ -1,0 +1,5 @@
+node_modules/
+.env
+ref-repo/
+*.log
+.DS_Store
