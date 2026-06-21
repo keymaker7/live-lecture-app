@@ -528,8 +528,8 @@ body {
   transition: transform 0.3s ease;
 }
 
-.activity-panel.collapsed {
-  transform: translateX(calc(-100% + 40px));
+.activity-panel.collapsed .activity-content {
+  display: none;
 }
 
 .activity-toggle {

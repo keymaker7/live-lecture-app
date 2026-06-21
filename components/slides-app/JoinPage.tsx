@@ -75,15 +75,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
       return;
     }
     setJoinError("");
-    emit("join-room", { roomId, nickname: trimmed }, (res) => {
-      const r = res as { ok?: boolean; error?: string; nickname?: string };
-      if (!r?.ok) {
-        setJoinError(r?.error || "참여에 실패했습니다.");
-        return;
-      }
-      setJoined(true);
-      setDisplayName(r.nickname || trimmed);
-    });
+    setDisplayName(trimmed);
+    setJoined(true);
+    emit("join-room", { roomId, nickname: trimmed });
   };
 
   const sendReaction = (emoji: string) => {
