@@ -41,8 +41,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [reactionStats, setReactionStats] = useState<Record<string, number>>({});
   const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; nickname: string; left: number; bottom: number }>>([]);
   const [chats, setChats] = useState<Array<{ id: string; message: string; nickname: string; timestamp: number }>>([]);
-  const [chatLog, setChatLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
-  const [emojiLog, setEmojiLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
+  const [activityLog, setActivityLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
+  const [emojiLog, setEmojiLog] = useState<Array<{ nickname: string; emoji: string; timestamp: number }>>([]);
   const [allChats, setAllChats] = useState<Array<{ message: string }>>([]);
   const [poll, setPoll] = useState<{
     id: string;
@@ -54,7 +54,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [slideReq, setSlideReq] = useState({ next: 0, prev: 0 });
   const [focusTimeline, setFocusTimeline] = useState<Array<{ time: number; count: number }>>([]);
   const [qrCollapsed, setQrCollapsed] = useState(false);
-  const [chatLogCollapsed, setChatLogCollapsed] = useState(true);
+  const [activityCollapsed, setActivityCollapsed] = useState(true);
   const [emojiLogCollapsed, setEmojiLogCollapsed] = useState(true);
   const [dockOpen, setDockOpen] = useState(false);
   const [dockTab, setDockTab] = useState("poll");
@@ -204,17 +204,17 @@ export function PresentPage({ roomId }: PresentPageProps) {
 
     on("reaction", (data) => {
       const r = data as { id: string; emoji: string; nickname: string };
-      const left = Math.random() * 24 + 1;   // 1%~25% (leftmost quarter)
-      const bottom = Math.random() * 40 + 8;  // 8%~48% (not at top)
+      const left = Math.random() * 22 + 2;   // 2%~24% (leftmost quarter)
+      const bottom = Math.random() * 40 + 8;  // 8%~48%
       setReactions((prev) => [...prev.slice(-5), { ...r, left, bottom }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== r.id)), 3000);
-      setEmojiLog((prev) => [{ nickname: r.nickname, message: r.emoji, timestamp: Date.now() }, ...prev].slice(0, 50));
+      setEmojiLog((prev) => [{ nickname: r.nickname, emoji: r.emoji, timestamp: Date.now() }, ...prev].slice(0, 100));
     });
     on("chat", (data) => {
       const c = data as { id: string; message: string; nickname: string; timestamp: number };
       setChats((prev) => [...prev.slice(-4), c]);
       setTimeout(() => setChats((prev) => prev.filter((x) => x.id !== c.id)), 6000);
-      setChatLog((prev) => [{ nickname: c.nickname, message: c.message, timestamp: c.timestamp }, ...prev].slice(0, 30));
+      setActivityLog((prev) => [{ nickname: c.nickname, message: c.message, timestamp: c.timestamp }, ...prev].slice(0, 30));
     });
     on("participant-count", (n) => setParticipantCount(n as number));
     on("reaction-stats", (s) => setReactionStats(s as Record<string, number>));
@@ -405,12 +405,12 @@ export function PresentPage({ roomId }: PresentPageProps) {
           </div>
         </aside>
 
-        <aside className={`activity-panel chat-log-panel ${chatLogCollapsed ? "collapsed" : ""}`}>
-          <button className="activity-toggle" onClick={() => setChatLogCollapsed(!chatLogCollapsed)}>💬</button>
+        <aside className={`activity-panel chat-log-panel ${activityCollapsed ? "collapsed" : ""}`}>
+          <button className="activity-toggle" onClick={() => setActivityCollapsed(!activityCollapsed)}>💬</button>
           <div className="activity-content">
             <h4>채팅 로그</h4>
             <div className="activity-list">
-              {chatLog.map((a, i) => (
+              {activityLog.map((a, i) => (
                 <div key={i} className="activity-item">
                   <span className="activity-time">{new Date(a.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
                   <span className="activity-nick">{a.nickname}</span>
@@ -426,11 +426,11 @@ export function PresentPage({ roomId }: PresentPageProps) {
           <div className="activity-content">
             <h4>이모지 로그</h4>
             <div className="activity-list">
-              {emojiLog.map((a, i) => (
+              {emojiLog.map((e, i) => (
                 <div key={i} className="activity-item">
-                  <span className="activity-time">{new Date(a.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
-                  <span className="activity-nick">{a.nickname}</span>
-                  <span className="activity-msg">{a.message}</span>
+                  <span className="activity-time">{new Date(e.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="activity-nick">{e.nickname}</span>
+                  <span className="activity-msg">{e.emoji}</span>
                 </div>
               ))}
             </div>
