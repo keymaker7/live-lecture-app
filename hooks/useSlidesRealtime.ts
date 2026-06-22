@@ -181,8 +181,16 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         if (!state.poll?.active || pollVotersRef.current.has(peerId)) return;
         if (optionIndex < 0 || optionIndex >= state.poll.options.length) return;
         pollVotersRef.current.add(peerId);
-        state.poll.options[optionIndex].votes += 1;
+        const newOptions = state.poll.options.map((opt, i) =>
+          i === optionIndex ? { ...opt, votes: opt.votes + 1 } : opt
+        );
+        state.poll = { ...state.poll, options: newOptions };
         await broadcastState();
+        return;
+      }
+
+      if (event === "play-video") {
+        emitLocal("play-video", payload);
         return;
       }
 
@@ -269,7 +277,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       ];
       const presenterCmdEvents = [
         "join-room", "leave-room", "reaction", "chat", "vote-poll",
-        "submit-question", "slide-request",
+        "submit-question", "slide-request", "play-video",
       ];
 
       const handleBroadcast = (event: string, payload: unknown) => {

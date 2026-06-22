@@ -15,7 +15,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [joined, setJoined] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [joinError, setJoinError] = useState("");
-  const [activeTab, setActiveTab] = useState<"react" | "question" | "slide">("react");
+  const [activeTab, setActiveTab] = useState<"react" | "question" | "video">("react");
   const [participantCount, setParticipantCount] = useState(0);
   const [chatInput, setChatInput] = useState("");
   const [questionInput, setQuestionInput] = useState("");
@@ -29,6 +29,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [myQuestions, setMyQuestions] = useState<string[]>([]);
   const [lastReactionAt, setLastReactionAt] = useState(0);
   const [sendLabel, setSendLabel] = useState("전송");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoStart, setVideoStart] = useState(0);
+  const [videoEnd, setVideoEnd] = useState(60);
 
   const { on, emit, ready } = useSlidesRealtime(roomId, "audience");
 
@@ -161,7 +164,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
         <nav className="audience-tabs">
           <button className={`aud-tab ${activeTab === "react" ? "active" : ""}`} onClick={() => setActiveTab("react")}>😊 반응</button>
           <button className={`aud-tab ${activeTab === "question" ? "active" : ""}`} onClick={() => setActiveTab("question")}>🙋 질문</button>
-          <button className={`aud-tab ${activeTab === "slide" ? "active" : ""}`} onClick={() => setActiveTab("slide")}>📱 슬라이드</button>
+          <button className={`aud-tab ${activeTab === "video" ? "active" : ""}`} onClick={() => setActiveTab("video")}>🎬 영상</button>
         </nav>
 
         <main className="audience-main">
@@ -179,11 +182,11 @@ export function JoinPage({ roomId }: JoinPageProps) {
               <textarea
                 placeholder="질문을 입력하세요..."
                 maxLength={300}
-                rows={3}
+                rows={4}
                 value={questionInput}
                 onChange={(e) => setQuestionInput(e.target.value)}
               />
-              <button className="btn-primary btn-sm" onClick={submitQuestion}>질문 등록</button>
+              <button className="btn-primary btn-sm aud-btn-full" onClick={submitQuestion}>질문 등록</button>
               <div className="my-questions">
                 {myQuestions.map((q, i) => (
                   <div key={i} className="my-q-item">✓ {q}</div>
@@ -191,12 +194,48 @@ export function JoinPage({ roomId }: JoinPageProps) {
               </div>
             </div>
           )}
-          {activeTab === "slide" && (
+          {activeTab === "video" && (
             <div className="aud-panel active">
-              <p className="audience-guide">슬라이드 넘김을 요청하세요</p>
-              <div className="slide-req-btns">
-                <button className="btn-slide-req" onClick={() => emit("slide-request", { direction: "prev" })}>⏮ 이전 슬라이드</button>
-                <button className="btn-slide-req" onClick={() => emit("slide-request", { direction: "next" })}>다음 슬라이드 ⏭</button>
+              <div className="video-input-wrap">
+                <label>유튜브 URL</label>
+                <input
+                  type="url"
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <div className="video-time-wrap">
+                  <div className="video-time-field">
+                    <label>시작 (초)</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      min={0}
+                      value={videoStart}
+                      onChange={(e) => setVideoStart(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="video-time-field">
+                    <label>끝 (초)</label>
+                    <input
+                      type="number"
+                      placeholder="60"
+                      min={0}
+                      value={videoEnd}
+                      onChange={(e) => setVideoEnd(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  disabled={!joined || !videoUrl.trim()}
+                  onClick={() => {
+                    if (!videoUrl.trim()) return;
+                    emit("play-video", { url: videoUrl.trim(), startSec: videoStart, endSec: videoEnd });
+                  }}
+                >
+                  ▶ 재생
+                </button>
               </div>
             </div>
           )}

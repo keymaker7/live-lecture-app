@@ -1,14 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import Script from "next/script";
 import Link from "next/link";
 import { useSlidesRealtime } from "@/hooks/useSlidesRealtime";
 import {
-  saveSession,
-  searchSessions,
-  deleteSession,
-  extractKeywords,
   getCachedRoom,
 } from "@/lib/session-store-client";
 
@@ -22,11 +18,15 @@ interface RoomData {
   slideUrl: string;
   participantCount?: number;
   reactionStats?: Record<string, number>;
-  focusTimeline?: Array<{ time: number; count: number }>;
 }
 
 interface PresentPageProps {
   roomId: string;
+}
+
+function extractYouTubeId(url: string): string {
+  const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : "";
 }
 
 export function PresentPage({ roomId }: PresentPageProps) {
@@ -42,7 +42,6 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; nickname: string; left: number; bottom: number }>>([]);
   const [activityLog, setActivityLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
   const [emojiLog, setEmojiLog] = useState<Array<{ nickname: string; emoji: string; timestamp: number }>>([]);
-  const [allChats, setAllChats] = useState<Array<{ message: string }>>([]);
   const [poll, setPoll] = useState<{
     id: string;
     question: string;
@@ -50,8 +49,6 @@ export function PresentPage({ roomId }: PresentPageProps) {
     active: boolean;
   } | null>(null);
   const [questions, setQuestions] = useState<Array<{ id: string; text: string; nickname: string; timestamp: number; answered: boolean }>>([]);
-  const [slideReq, setSlideReq] = useState({ next: 0, prev: 0 });
-  const [focusTimeline, setFocusTimeline] = useState<Array<{ time: number; count: number }>>([]);
   const [qrCollapsed, setQrCollapsed] = useState(false);
   const [activityCollapsed, setActivityCollapsed] = useState(true);
   const [emojiLogCollapsed, setEmojiLogCollapsed] = useState(true);
@@ -64,12 +61,12 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerRemaining, setTimerRemaining] = useState(0);
   const [showTimerBadge, setShowTimerBadge] = useState(false);
-  const [sessionSearch, setSessionSearch] = useState("");
   const [copyLabel, setCopyLabel] = useState("링크 복사");
-  const [saveLabel, setSaveLabel] = useState("세션 저장");
+  const [videoVisible, setVideoVisible] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoStartSec, setVideoStartSec] = useState(0);
+  const [videoEndSec, setVideoEndSec] = useState(0);
 
-  const wordCanvasRef = useRef<HTMLCanvasElement>(null);
-  const focusCanvasRef = useRef<HTMLCanvasElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvaContainerRef = useRef<HTMLDivElement>(null);
 
@@ -80,82 +77,6 @@ export function PresentPage({ roomId }: PresentPageProps) {
     const s = sec % 60;
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
-
-  const renderWordCloud = useCallback(() => {
-    const canvas = wordCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const keywords = extractKeywords(allChats, 20);
-    if (!keywords.length) {
-      ctx.fillStyle = "#9898b0";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("채팅이 쌓이면 표시됩니다", canvas.width / 2, canvas.height / 2);
-      return;
-    }
-    const max = keywords[0].count;
-    const colors = ["#c4b5fd", "#86efac", "#fca5a5", "#fbbf24", "#38bdf8", "#c084fc"];
-    const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
-    keywords.forEach((kw, i) => {
-      const size = 12 + (kw.count / max) * 22;
-      ctx.font = `bold ${size}px sans-serif`;
-      const w = ctx.measureText(kw.word).width;
-      const h = size;
-      let x = 0, y = 0, ok = false;
-      for (let attempt = 0; attempt < 60; attempt++) {
-        x = Math.random() * (canvas.width - w - 10) + 5;
-        y = Math.random() * (canvas.height - h - 10) + h;
-        ok = !placed.some((p) => Math.abs(p.x - x) < p.w + 4 && Math.abs(p.y - y) < p.h + 4);
-        if (ok) break;
-      }
-      if (!ok) return;
-      placed.push({ x, y, w, h });
-      ctx.fillStyle = colors[i % colors.length];
-      ctx.fillText(kw.word, x, y);
-    });
-  }, [allChats]);
-
-  const renderFocusChart = useCallback(() => {
-    const canvas = focusCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    if (!focusTimeline.length) {
-      ctx.fillStyle = "#9898b0";
-      ctx.font = "12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("반응이 쌓이면 표시됩니다", w / 2, h / 2);
-      return;
-    }
-    const data = focusTimeline.slice(-20);
-    const max = Math.max(...data.map((d) => d.count), 1);
-    const pad = 20;
-    const chartW = w - pad * 2;
-    const chartH = h - pad * 2;
-    ctx.strokeStyle = "#fce7f3";
-    ctx.beginPath();
-    ctx.moveTo(pad, pad);
-    ctx.lineTo(pad, h - pad);
-    ctx.lineTo(w - pad, h - pad);
-    ctx.stroke();
-    ctx.strokeStyle = "#c4b5fd";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    data.forEach((d, i) => {
-      const x = pad + (i / Math.max(data.length - 1, 1)) * chartW;
-      const y = h - pad - (d.count / max) * chartH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-  }, [focusTimeline]);
-
-  useEffect(() => { renderWordCloud(); }, [allChats, renderWordCloud, dockTab]);
-  useEffect(() => { renderFocusChart(); }, [focusTimeline, renderFocusChart, dockTab]);
 
   useEffect(() => {
     document.body.className = "present-page";
@@ -180,11 +101,9 @@ export function PresentPage({ roomId }: PresentPageProps) {
       setRoom(roomData);
       setParticipantCount(roomData.participantCount || 0);
       setReactionStats(roomData.reactionStats || {});
-      setFocusTimeline(roomData.focusTimeline || []);
       setInitialState({
         participantCount: roomData.participantCount || 0,
         reactionStats: roomData.reactionStats || {},
-        focusTimeline: roomData.focusTimeline || [],
       });
 
       const qrRes = await fetch(`/api/rooms/${roomId}/qr`);
@@ -203,8 +122,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
 
     on("reaction", (data) => {
       const r = data as { id: string; emoji: string; nickname: string };
-      const left = Math.random() * 22 + 2;   // 2%~24% (leftmost quarter)
-      const bottom = Math.random() * 40 + 8;  // 8%~48%
+      const left = Math.random() * 22 + 2;
+      const bottom = Math.random() * 40 + 8;
       setReactions((prev) => [...prev.slice(-5), { ...r, left, bottom }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== r.id)), 3000);
       setEmojiLog((prev) => [{ nickname: r.nickname, emoji: r.emoji, timestamp: Date.now() }, ...prev].slice(0, 100));
@@ -215,24 +134,24 @@ export function PresentPage({ roomId }: PresentPageProps) {
     });
     on("participant-count", (n) => setParticipantCount(n as number));
     on("reaction-stats", (s) => setReactionStats(s as Record<string, number>));
-    on("focus-update", (d) => setFocusTimeline(d as typeof focusTimeline));
-    on("wordcloud-update", (d) => setAllChats(d as Array<{ message: string }>));
-    on("slide-request-update", (d) => setSlideReq(d as typeof slideReq));
     on("room-state", (state) => {
       const s = state as {
         poll?: typeof poll;
         questions?: typeof questions;
-        slideRequests?: typeof slideReq;
-        focusTimeline?: typeof focusTimeline;
         participantCount?: number;
         reactionStats?: Record<string, number>;
       };
       if (s.poll !== undefined) setPoll(s.poll);
       if (s.questions) setQuestions(s.questions);
-      if (s.slideRequests) setSlideReq(s.slideRequests);
-      if (s.focusTimeline) setFocusTimeline(s.focusTimeline);
       if (s.participantCount !== undefined) setParticipantCount(s.participantCount);
       if (s.reactionStats) setReactionStats(s.reactionStats);
+    });
+    on("play-video", (data) => {
+      const d = data as { url: string; startSec: number; endSec: number };
+      setVideoUrl(d.url || "");
+      setVideoStartSec(d.startSec || 0);
+      setVideoEndSec(d.endSec || 0);
+      setVideoVisible(true);
     });
   }, [ready, room, roomId, emit, on]);
 
@@ -279,7 +198,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   }
 
   const slideTypeLabel = room.slideType === "canva" ? "Canva" : room.slideType === "google" ? "Google" : "Embed";
-  const sessions = searchSessions(sessionSearch);
+  const videoId = extractYouTubeId(videoUrl);
 
   return (
     <>
@@ -369,6 +288,17 @@ export function PresentPage({ roomId }: PresentPageProps) {
               </div>
             </div>
           )}
+
+          {videoVisible && videoId && (
+            <div className="video-overlay">
+              <iframe
+                src={`https://www.youtube.com/embed/${videoId}?start=${videoStartSec}&end=${videoEndSec}&autoplay=1`}
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
+              <button className="btn-close-video" onClick={() => setVideoVisible(false)}>✕</button>
+            </div>
+          )}
         </main>
 
         <aside className={`qr-panel ${qrCollapsed ? "collapsed" : ""}`}>
@@ -436,7 +366,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
             <div className="dock-tabs">
               {[
                 ["poll", "📊 투표"], ["questions", "🙋 질문"], ["timer", "⏱️ 타이머"],
-                ["analytics", "📈 분석"], ["slides", "📱 슬라이드"], ["session", "🗃️ 세션"],
+                ["video", "🎬 영상"],
               ].map(([id, label]) => (
                 <button key={id} className={`dock-tab ${dockTab === id ? "active" : ""}`} onClick={() => setDockTab(id)}>{label}</button>
               ))}
@@ -502,52 +432,25 @@ export function PresentPage({ roomId }: PresentPageProps) {
               </div>
             )}
 
-            {dockTab === "analytics" && (
+            {dockTab === "video" && (
               <div className="dock-panel active">
-                <div className="chart-row">
-                  <div className="chart-box">
-                    <h5>📝 워드클라우드</h5>
-                    <canvas ref={wordCanvasRef} width={280} height={160} />
+                <div className="dock-actions" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 0 }}>
+                  <span style={{ fontSize: "0.85rem", color: "var(--text)" }}>영상 채팅</span>
+                  <button
+                    className={`btn-sm${videoVisible ? " btn-ghost" : ""}`}
+                    onClick={() => setVideoVisible(!videoVisible)}
+                  >
+                    {videoVisible ? "끄기" : "켜기"}
+                  </button>
+                </div>
+                {videoUrl ? (
+                  <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--text-muted)", lineHeight: "1.6" }}>
+                    <div>URL: {videoUrl.length > 45 ? videoUrl.slice(0, 45) + "…" : videoUrl}</div>
+                    <div>구간: {videoStartSec}초 ~ {videoEndSec}초</div>
                   </div>
-                  <div className="chart-box">
-                    <h5>🎯 집중도 (반응/30초)</h5>
-                    <canvas ref={focusCanvasRef} width={280} height={160} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {dockTab === "slides" && (
-              <div className="dock-panel active">
-                <div className="slide-req-display">
-                  <div className="slide-req-item">⏭ 다음 요청: <strong>{slideReq.next}</strong></div>
-                  <div className="slide-req-item">⏮ 이전 요청: <strong>{slideReq.prev}</strong></div>
-                </div>
-                <button className="btn-ghost btn-sm" onClick={() => emit("reset-slide-requests")}>요청 초기화</button>
-              </div>
-            )}
-
-            {dockTab === "session" && (
-              <div className="dock-panel active">
-                <div className="dock-actions">
-                  <button className="btn-primary btn-sm" onClick={() => {
-                    emit("get-session-data", {}, (data) => {
-                      if (!data) return;
-                      saveSession({ ...data as object, roomId, title: room.title });
-                      setSaveLabel("저장됨!");
-                      setTimeout(() => setSaveLabel("세션 저장"), 2000);
-                    });
-                  }}>{saveLabel}</button>
-                </div>
-                <input type="text" placeholder="저장된 세션 검색..." value={sessionSearch} onChange={(e) => setSessionSearch(e.target.value)} />
-                <div className="session-list">
-                  {!sessions.length ? <p className="empty-msg">저장된 세션이 없습니다.</p> : sessions.map((s) => (
-                    <div key={s.roomId} className="session-item">
-                      <div className="session-item-title">{s.title || s.roomId}</div>
-                      <button className="btn-sm btn-delete-session" onClick={() => deleteSession(s.roomId)}>삭제</button>
-                    </div>
-                  ))}
-                </div>
+                ) : (
+                  <p className="empty-msg" style={{ marginTop: "0.35rem" }}>모바일에서 유튜브 URL을 입력하면 여기서 재생됩니다.</p>
+                )}
               </div>
             )}
           </div>
