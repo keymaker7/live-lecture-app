@@ -40,7 +40,6 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [participantCount, setParticipantCount] = useState(0);
   const [reactionStats, setReactionStats] = useState<Record<string, number>>({});
   const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; nickname: string; left: number; bottom: number }>>([]);
-  const [chats, setChats] = useState<Array<{ id: string; message: string; nickname: string; timestamp: number }>>([]);
   const [activityLog, setActivityLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
   const [emojiLog, setEmojiLog] = useState<Array<{ nickname: string; emoji: string; timestamp: number }>>([]);
   const [allChats, setAllChats] = useState<Array<{ message: string }>>([]);
@@ -212,8 +211,6 @@ export function PresentPage({ roomId }: PresentPageProps) {
     });
     on("chat", (data) => {
       const c = data as { id: string; message: string; nickname: string; timestamp: number };
-      setChats((prev) => [...prev.slice(-4), c]);
-      setTimeout(() => setChats((prev) => prev.filter((x) => x.id !== c.id)), 6000);
       setActivityLog((prev) => [{ nickname: c.nickname, message: c.message, timestamp: c.timestamp }, ...prev].slice(0, 30));
     });
     on("participant-count", (n) => setParticipantCount(n as number));
@@ -312,12 +309,9 @@ export function PresentPage({ roomId }: PresentPageProps) {
               >{r.emoji}</div>
             ))}
           </div>
-          <div className="chat-stream">
-            {chats.map((c) => (
-              <div key={c.id} className="chat-bubble">
-                <div className="chat-nickname">{c.nickname}</div>
-                <div className="chat-message">{c.message}</div>
-              </div>
+          <div className="reaction-stats-bar">
+            {Object.entries(reactionStats).sort((a, b) => b[1] - a[1]).map(([e, c]) => (
+              <span key={e} className="stat-chip">{e} {c}</span>
             ))}
           </div>
         </aside>

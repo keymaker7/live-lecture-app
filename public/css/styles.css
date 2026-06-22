@@ -1030,7 +1030,7 @@ body {
   color: var(--text-muted);
 }
 
-/* Activity panel top offsets (dock open doesn't change these) */
+/* Activity panel top offsets */
 .activity-panel { top: 3.5rem; }
 .emoji-log-panel { top: 7.5rem; }
 
