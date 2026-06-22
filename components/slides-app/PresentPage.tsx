@@ -202,7 +202,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
 
     on("reaction", (data) => {
       const r = data as { id: string; emoji: string; nickname: string };
-      const left = Math.random() * 12 + 2;   // 2%~14% (left side)
+      const left = Math.random() * 24 + 1;   // 1%~25% (leftmost quarter)
       const bottom = Math.random() * 40 + 8;  // 8%~48% (not at top)
       setReactions((prev) => [...prev.slice(-5), { ...r, left, bottom }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== r.id)), 3000);
