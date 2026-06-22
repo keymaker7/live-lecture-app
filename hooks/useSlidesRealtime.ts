@@ -56,6 +56,11 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     handlersRef.current[event].push(fn);
   }, []);
 
+  const off = useCallback((event: string, fn: Handler) => {
+    if (!handlersRef.current[event]) return;
+    handlersRef.current[event] = handlersRef.current[event].filter((h) => h !== fn);
+  }, []);
+
   const emitLocal = useCallback((event: string, data: unknown) => {
     (handlersRef.current[event] || []).forEach((fn) => fn(data));
   }, []);
@@ -250,7 +255,11 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         return;
       }
 
-      const channel = supabase.channel(channelName);
+      // self: false prevents Supabase from looping broadcasts back to the sender,
+      // which would cause duplicate handler processing (chat/reaction appearing twice).
+      const channel = supabase.channel(channelName, {
+        config: { broadcast: { self: false } },
+      });
       channelRef.current = channel;
 
       const audienceEvents = [
@@ -376,5 +385,5 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     stateRef.current = { ...stateRef.current, ...state };
   }, []);
 
-  return { on, emit, ready, setInitialState, clientId: clientIdRef.current };
+  return { on, off, emit, ready, setInitialState, clientId: clientIdRef.current };
 }
