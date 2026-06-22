@@ -295,7 +295,9 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         emitLocal(event, payload);
       };
 
-      [...audienceEvents, ...presenterCmdEvents].forEach((event) => {
+      // Deduplicate: "reaction" and "chat" appear in both arrays.
+      // Without Set, each gets two Supabase listeners → handler fires twice per message.
+      [...new Set([...audienceEvents, ...presenterCmdEvents])].forEach((event) => {
         channel.on("broadcast", { event }, ({ payload }) => handleBroadcast(event, payload));
       });
 
