@@ -1029,6 +1029,7 @@ body {
 
 /* Activity panel offset for dock */
 .activity-panel { bottom: 2.5rem; }
+.emoji-log-panel { bottom: 6rem; }
 
 /* ── Join: tabs, poll, questions, slides ── */
 .poll-vote-panel {

@@ -42,6 +42,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; nickname: string; left: number; bottom: number }>>([]);
   const [chats, setChats] = useState<Array<{ id: string; message: string; nickname: string; timestamp: number }>>([]);
   const [activityLog, setActivityLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
+  const [emojiLog, setEmojiLog] = useState<Array<{ nickname: string; emoji: string; timestamp: number }>>([]);
   const [allChats, setAllChats] = useState<Array<{ message: string }>>([]);
   const [poll, setPoll] = useState<{
     id: string;
@@ -54,6 +55,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [focusTimeline, setFocusTimeline] = useState<Array<{ time: number; count: number }>>([]);
   const [qrCollapsed, setQrCollapsed] = useState(false);
   const [activityCollapsed, setActivityCollapsed] = useState(true);
+  const [emojiLogCollapsed, setEmojiLogCollapsed] = useState(true);
   const [dockOpen, setDockOpen] = useState(false);
   const [dockTab, setDockTab] = useState("poll");
   const [pollQuestion, setPollQuestion] = useState("");
@@ -206,7 +208,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
       const bottom = Math.random() * 40 + 8;  // 8%~48%
       setReactions((prev) => [...prev.slice(-5), { ...r, left, bottom }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== r.id)), 3000);
-      setActivityLog((prev) => [{ nickname: r.nickname, message: r.emoji, timestamp: Date.now() }, ...prev].slice(0, 50));
+      setEmojiLog((prev) => [{ nickname: r.nickname, emoji: r.emoji, timestamp: Date.now() }, ...prev].slice(0, 100));
     });
     on("chat", (data) => {
       const c = data as { id: string; message: string; nickname: string; timestamp: number };
@@ -406,13 +408,29 @@ export function PresentPage({ roomId }: PresentPageProps) {
         <aside className={`activity-panel ${activityCollapsed ? "collapsed" : ""}`}>
           <button className="activity-toggle" onClick={() => setActivityCollapsed(!activityCollapsed)}>💬</button>
           <div className="activity-content">
-            <h4>채팅·이모지 로그</h4>
+            <h4>채팅 로그</h4>
             <div className="activity-list">
               {activityLog.map((a, i) => (
                 <div key={i} className="activity-item">
                   <span className="activity-time">{new Date(a.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
                   <span className="activity-nick">{a.nickname}</span>
                   <span className="activity-msg">{a.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <aside className={`activity-panel emoji-log-panel ${emojiLogCollapsed ? "collapsed" : ""}`}>
+          <button className="activity-toggle" onClick={() => setEmojiLogCollapsed(!emojiLogCollapsed)}>😊</button>
+          <div className="activity-content">
+            <h4>이모지 로그</h4>
+            <div className="activity-list">
+              {emojiLog.map((e, i) => (
+                <div key={i} className="activity-item">
+                  <span className="activity-time">{new Date(e.timestamp).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="activity-nick">{e.nickname}</span>
+                  <span className="activity-msg">{e.emoji}</span>
                 </div>
               ))}
             </div>
