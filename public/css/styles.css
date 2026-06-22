@@ -321,7 +321,7 @@ body {
   width: 280px;
   pointer-events: none;
   z-index: 50;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .reaction-stream {
@@ -335,7 +335,7 @@ body {
 .chat-stream {
   position: absolute;
   left: 0;
-  bottom: 60px;
+  bottom: 170px;
   width: 100%;
   max-height: 50%;
   display: flex;
@@ -348,7 +348,7 @@ body {
 .reaction-stats-bar {
   position: absolute;
   left: 1rem;
-  bottom: 1rem;
+  bottom: calc(170px + 0.5rem);
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -381,36 +381,48 @@ body {
 
 /* 채팅 버블 */
 .chat-bubble {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border-radius: 16px;
-  padding: 0.6rem 0.9rem;
+  background: linear-gradient(135deg, #ffffff 0%, #f0eeff 100%);
+  backdrop-filter: blur(12px);
+  border-radius: 18px;
+  padding: 0.65rem 1rem 0.65rem 0.9rem;
   max-width: 260px;
-  animation: chatFade 6s ease forwards;
-  border-left: 4px solid var(--accent-pink);
-  box-shadow: var(--shadow-sm);
-  border: 2px solid var(--border);
-  border-left: 4px solid var(--accent-pink);
+  animation: chatFade 7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(108,99,255,0.25);
+  border-left: 4px solid #6c63ff;
+  color: #1a1a2e;
+  position: relative;
 }
 
 .chat-bubble .chat-nickname {
-  font-size: 0.75rem;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 2px;
+  font-size: 0.72rem;
+  color: #6c63ff;
+  font-weight: 700;
+  margin-bottom: 3px;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-bubble .chat-nickname::before {
+  content: '💬';
+  font-size: 0.65rem;
 }
 
 .chat-bubble .chat-message {
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-size: 0.88rem;
+  line-height: 1.5;
   word-break: break-word;
+  color: #1a1a2e;
+  font-weight: 400;
 }
 
 @keyframes chatFade {
-  0% { opacity: 0; transform: translateX(-20px); }
-  8% { opacity: 1; transform: translateX(0); }
-  75% { opacity: 1; }
-  100% { opacity: 0; transform: translateX(-10px); }
+  0%   { opacity: 0; transform: translateX(-28px) scale(0.92); }
+  7%   { opacity: 1; transform: translateX(4px) scale(1.02); }
+  13%  { transform: translateX(0) scale(1); }
+  78%  { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(0.96); }
 }
 
 /* 우측 QR 패널 */
@@ -970,6 +982,50 @@ body {
 }
 
 /* Poll overlay on slide */
+/* 질문 알림 토스트 */
+.question-toast {
+  position: absolute;
+  top: 1.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #fff 0%, #f0eeff 100%);
+  border-left: 4px solid #6c63ff;
+  border-radius: 12px;
+  padding: 0.65rem 1.1rem;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+  z-index: 42;
+  max-width: 360px;
+  min-width: 220px;
+  animation: toastSlide 5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: none;
+}
+
+.question-toast .q-toast-label {
+  font-size: 0.68rem;
+  color: #6c63ff;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.question-toast .q-toast-text {
+  font-size: 0.88rem;
+  color: #1a1a2e;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+@keyframes toastSlide {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.94); }
+  8%   { opacity: 1; transform: translateX(-50%) translateY(2px) scale(1.01); }
+  14%  { transform: translateX(-50%) translateY(0) scale(1); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
 .poll-overlay {
   position: absolute;
   top: 1rem;
@@ -1230,12 +1286,19 @@ body {
 }
 .video-time-field input[type="number"]:focus { border-color: var(--accent); }
 
-/* Video overlay (presenter) */
+/* Video PIP (presenter, bottom-left) */
 .video-overlay {
   position: absolute;
-  inset: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 157px;
   background: #000;
-  z-index: 30;
+  z-index: 55;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+  pointer-events: auto;
 }
 .video-overlay iframe {
   width: 100%;
@@ -1245,20 +1308,20 @@ body {
 }
 .btn-close-video {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  background: rgba(0, 0, 0, 0.7);
+  top: 0.4rem;
+  right: 0.4rem;
+  background: rgba(0, 0, 0, 0.75);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 50%;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 1.8rem;
+  height: 1.8rem;
   cursor: pointer;
-  font-size: 1rem;
-  z-index: 31;
+  font-size: 0.85rem;
+  z-index: 56;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
 }
-.btn-close-video:hover { background: rgba(220, 0, 0, 0.8); }
+.btn-close-video:hover { background: rgba(220, 0, 0, 0.85); }

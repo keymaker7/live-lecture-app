@@ -372,6 +372,7 @@ io.on('connection', (socket) => {
     };
     room.questions.push(q);
     broadcastState(socket.roomId);
+    io.to(socket.roomId).emit('new-question', { nickname: q.nickname, text: q.text });
   });
 
   socket.on('resolve-question', ({ questionId }) => {
@@ -418,6 +419,12 @@ io.on('connection', (socket) => {
       participantCount: room.participants.size,
       createdAt: room.createdAt,
     });
+  });
+
+  socket.on('play-video', ({ url, startSec, endSec }) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+    io.to(socket.roomId).emit('play-video', { url, startSec: Number(startSec) || 0, endSec: Number(endSec) || 60 });
   });
 
   socket.on('disconnect', () => {

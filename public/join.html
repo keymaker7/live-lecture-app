@@ -35,7 +35,7 @@
     <nav class="audience-tabs">
       <button class="aud-tab active" data-tab="react">😊 반응</button>
       <button class="aud-tab" data-tab="question">🙋 질문</button>
-      <button class="aud-tab" data-tab="slide">📱 슬라이드</button>
+      <button class="aud-tab" data-tab="video">🎬 영상</button>
     </nav>
 
     <main class="audience-main">
@@ -58,11 +58,21 @@
         <div class="my-questions" id="myQuestions"></div>
       </div>
 
-      <div class="aud-panel" id="panel-slide">
-        <p class="audience-guide">슬라이드 넘김을 요청하세요</p>
-        <div class="slide-req-btns">
-          <button class="btn-slide-req" id="reqPrev">⏮ 이전 슬라이드</button>
-          <button class="btn-slide-req" id="reqNext">다음 슬라이드 ⏭</button>
+      <div class="aud-panel" id="panel-video">
+        <div class="video-input-wrap">
+          <label for="videoUrl">유튜브 URL</label>
+          <input type="url" id="videoUrl" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+          <div class="video-time-wrap">
+            <div class="video-time-field">
+              <label for="videoStart">시작 (초)</label>
+              <input type="number" id="videoStart" placeholder="0" min="0" value="0">
+            </div>
+            <div class="video-time-field">
+              <label for="videoEnd">끝 (초)</label>
+              <input type="number" id="videoEnd" placeholder="60" min="0" value="60">
+            </div>
+          </div>
+          <button class="btn-primary" id="playVideoBtn">▶ 재생</button>
         </div>
       </div>
     </main>

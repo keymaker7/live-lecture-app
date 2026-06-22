@@ -7,8 +7,6 @@ socket.emit('presenter-join', { roomId });
 
 let joinUrl = '';
 let roomTitle = '연수';
-let allChats = [];
-let focusTimeline = [];
 let timerInterval = null;
 let timerRemaining = 0;
 let timerRunning = false;
@@ -54,14 +52,10 @@ const timerMinutes = document.getElementById('timerMinutes');
 const timerStart = document.getElementById('timerStart');
 const timerPause = document.getElementById('timerPause');
 const timerReset = document.getElementById('timerReset');
-const wordCloudCanvas = document.getElementById('wordCloudCanvas');
-const focusChartCanvas = document.getElementById('focusChartCanvas');
-const slideNextCount = document.getElementById('slideNextCount');
-const slidePrevCount = document.getElementById('slidePrevCount');
-const resetSlideReq = document.getElementById('resetSlideReq');
-const saveSessionBtn = document.getElementById('saveSessionBtn');
-const sessionSearch = document.getElementById('sessionSearch');
-const sessionList = document.getElementById('sessionList');
+const videoOverlay = document.getElementById('videoOverlay');
+const videoFrame = document.getElementById('videoFrame');
+const closeVideoBtn = document.getElementById('closeVideoBtn');
+const stopVideoBtn = document.getElementById('stopVideoBtn');
 
 /* ── Init ── */
 async function init() {
@@ -82,10 +76,7 @@ async function init() {
 
   updateCount(room.participantCount || 0);
   renderReactionStats(room.reactionStats || {});
-  if (room.focusTimeline) focusTimeline = room.focusTimeline;
-  renderFocusChart();
   await loadSlide(room);
-  renderSessionList();
 }
 
 async function loadSlide(room) {
@@ -146,9 +137,13 @@ socket.on('chat', ({ message, nickname, timestamp }) => {
 });
 socket.on('participant-count', updateCount);
 socket.on('reaction-stats', renderReactionStats);
-socket.on('focus-update', (data) => { focusTimeline = data; renderFocusChart(); });
-socket.on('wordcloud-update', (chats) => { allChats = chats; renderWordCloud(); });
-socket.on('slide-request-update', renderSlideRequests);
+socket.on('play-video', ({ url, startSec, endSec }) => {
+  const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (!m) return;
+  videoFrame.src = `https://www.youtube.com/embed/${m[1]}?start=${startSec}&end=${endSec}&autoplay=1`;
+  videoOverlay.classList.remove('hidden');
+});
+socket.on('new-question', ({ nickname, text }) => spawnQuestionToast(nickname, text));
 socket.on('room-state', handleRoomState);
 
 function handleRoomState(state) {
@@ -156,8 +151,6 @@ function handleRoomState(state) {
   renderReactionStats(state.reactionStats || {});
   renderPoll(state.poll);
   renderQuestions(state.questions || []);
-  renderSlideRequests(state.slideRequests);
-  if (state.focusTimeline) { focusTimeline = state.focusTimeline; renderFocusChart(); }
 }
 
 function updateCount(n) {
@@ -298,133 +291,24 @@ timerReset.addEventListener('click', () => {
   timerBadge.classList.remove('timer-done');
 });
 
-/* ── Word Cloud ── */
-function renderWordCloud() {
-  const canvas = wordCloudCanvas;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const keywords = SessionStore.extractKeywords(allChats, 20);
-  if (!keywords.length) {
-    ctx.fillStyle = '#9898b0';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('채팅이 쌓이면 표시됩니다', canvas.width / 2, canvas.height / 2);
-    return;
-  }
-  const max = keywords[0].count;
-  const colors = ['#6c63ff', '#4ade80', '#f87171', '#fbbf24', '#38bdf8', '#c084fc'];
-  const placed = [];
-  keywords.forEach((kw, i) => {
-    const size = 12 + (kw.count / max) * 22;
-    ctx.font = `bold ${size}px sans-serif`;
-    const w = ctx.measureText(kw.word).width;
-    const h = size;
-    let x, y, ok = false;
-    for (let attempt = 0; attempt < 60; attempt++) {
-      x = Math.random() * (canvas.width - w - 10) + 5;
-      y = Math.random() * (canvas.height - h - 10) + h;
-      ok = !placed.some((p) => Math.abs(p.x - x) < p.w + 4 && Math.abs(p.y - y) < p.h + 4);
-      if (ok) break;
-    }
-    if (!ok) return;
-    placed.push({ x, y, w, h });
-    ctx.fillStyle = colors[i % colors.length];
-    ctx.fillText(kw.word, x, y);
-  });
+/* ── Question Toast ── */
+function spawnQuestionToast(nickname, text) {
+  const slideArea = document.getElementById('slideArea');
+  const toast = document.createElement('div');
+  toast.className = 'question-toast';
+  toast.innerHTML = `<div class="q-toast-label">🙋 ${esc(nickname)} 질문</div><div class="q-toast-text">${esc(text)}</div>`;
+  slideArea.appendChild(toast);
+  setTimeout(() => toast.remove(), 5100);
 }
 
-/* ── Focus Chart ── */
-function renderFocusChart() {
-  const canvas = focusChartCanvas;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  if (!focusTimeline.length) {
-    ctx.fillStyle = '#9898b0';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('반응이 쌓이면 표시됩니다', w / 2, h / 2);
-    return;
-  }
-
-  const data = focusTimeline.slice(-20);
-  const max = Math.max(...data.map((d) => d.count), 1);
-  const pad = 20;
-  const chartW = w - pad * 2;
-  const chartH = h - pad * 2;
-
-  ctx.strokeStyle = '#3a3a55';
-  ctx.beginPath();
-  ctx.moveTo(pad, pad);
-  ctx.lineTo(pad, h - pad);
-  ctx.lineTo(w - pad, h - pad);
-  ctx.stroke();
-
-  ctx.strokeStyle = '#6c63ff';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  data.forEach((d, i) => {
-    const x = pad + (i / Math.max(data.length - 1, 1)) * chartW;
-    const y = h - pad - (d.count / max) * chartH;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  ctx.fillStyle = '#6c63ff';
-  data.forEach((d, i) => {
-    const x = pad + (i / Math.max(data.length - 1, 1)) * chartW;
-    const y = h - pad - (d.count / max) * chartH;
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
+/* ── Video ── */
+function stopVideo() {
+  videoFrame.src = '';
+  videoOverlay.classList.add('hidden');
 }
 
-/* ── Slide Requests ── */
-function renderSlideRequests(req) {
-  if (!req) return;
-  slideNextCount.textContent = req.next;
-  slidePrevCount.textContent = req.prev;
-}
-
-resetSlideReq.addEventListener('click', () => socket.emit('reset-slide-requests'));
-
-/* ── Session ── */
-saveSessionBtn.addEventListener('click', () => {
-  socket.emit('get-session-data', (data) => {
-    if (!data) return;
-    SessionStore.saveSession(data);
-    saveSessionBtn.textContent = '저장됨!';
-    setTimeout(() => { saveSessionBtn.textContent = '세션 저장'; }, 2000);
-    renderSessionList();
-  });
-});
-
-function renderSessionList() {
-  const q = sessionSearch.value;
-  const sessions = SessionStore.searchSessions(q);
-  if (!sessions.length) {
-    sessionList.innerHTML = '<p class="empty-msg">저장된 세션이 없습니다.</p>';
-    return;
-  }
-  sessionList.innerHTML = sessions.map((s) => `
-    <div class="session-item">
-      <div class="session-item-title">${esc(s.title || s.roomId)}</div>
-      <div class="session-item-meta">${new Date(s.savedAt).toLocaleString('ko-KR')} · 💬${s.chats?.length || 0} · 🙋${s.questions?.length || 0}</div>
-      <button class="btn-sm btn-delete-session" data-id="${s.roomId}">삭제</button>
-    </div>
-  `).join('');
-
-  sessionList.querySelectorAll('.btn-delete-session').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      SessionStore.deleteSession(btn.dataset.id);
-      renderSessionList();
-    });
-  });
-}
-
-sessionSearch.addEventListener('input', renderSessionList);
+closeVideoBtn.addEventListener('click', stopVideo);
+stopVideoBtn.addEventListener('click', stopVideo);
 
 /* ── Dock tabs ── */
 dockToggle.addEventListener('click', () => {

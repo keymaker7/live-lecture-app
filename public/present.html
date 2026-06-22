@@ -12,6 +12,11 @@
       <div class="reaction-stream" id="reactionStream"></div>
       <div class="chat-stream" id="chatStream"></div>
       <div class="reaction-stats-bar" id="reactionStatsBar"></div>
+      <!-- 영상 PIP (이모지 로그 바로 밑) -->
+      <div class="video-overlay hidden" id="videoOverlay">
+        <iframe id="videoFrame" allow="autoplay; fullscreen" allowfullscreen></iframe>
+        <button class="btn-close-video" id="closeVideoBtn" title="닫기">✕</button>
+      </div>
     </aside>
 
     <main class="slide-area" id="slideArea">
@@ -68,9 +73,7 @@
         <button class="dock-tab active" data-tab="poll">📊 투표</button>
         <button class="dock-tab" data-tab="questions">🙋 질문</button>
         <button class="dock-tab" data-tab="timer">⏱️ 타이머</button>
-        <button class="dock-tab" data-tab="analytics">📈 분석</button>
-        <button class="dock-tab" data-tab="slides">📱 슬라이드</button>
-        <button class="dock-tab" data-tab="session">🗃️ 세션</button>
+        <button class="dock-tab" data-tab="video">🎬 영상</button>
       </div>
 
       <div class="dock-panel active" id="panel-poll">
@@ -100,33 +103,9 @@
         </div>
       </div>
 
-      <div class="dock-panel" id="panel-analytics">
-        <div class="chart-row">
-          <div class="chart-box">
-            <h5>📝 워드클라우드</h5>
-            <canvas id="wordCloudCanvas" width="280" height="160"></canvas>
-          </div>
-          <div class="chart-box">
-            <h5>🎯 집중도 (반응/30초)</h5>
-            <canvas id="focusChartCanvas" width="280" height="160"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <div class="dock-panel" id="panel-slides">
-        <div class="slide-req-display">
-          <div class="slide-req-item">⏭ 다음 요청: <strong id="slideNextCount">0</strong></div>
-          <div class="slide-req-item">⏮ 이전 요청: <strong id="slidePrevCount">0</strong></div>
-        </div>
-        <button class="btn-ghost btn-sm" id="resetSlideReq">요청 초기화</button>
-      </div>
-
-      <div class="dock-panel" id="panel-session">
-        <div class="dock-actions">
-          <button class="btn-primary btn-sm" id="saveSessionBtn">세션 저장</button>
-        </div>
-        <input type="text" id="sessionSearch" placeholder="저장된 세션 검색..." maxlength="50">
-        <div class="session-list" id="sessionList"></div>
+      <div class="dock-panel" id="panel-video">
+        <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.75rem;">모바일 🎬 영상 탭에서 URL을 전송하면 좌측 하단에 재생됩니다.</p>
+        <button class="btn-ghost btn-sm" id="stopVideoBtn">⏹ 영상 끄기</button>
       </div>
     </div>
   </div>

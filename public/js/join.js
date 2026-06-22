@@ -26,8 +26,10 @@ const pollVotedMsg = document.getElementById('pollVotedMsg');
 const questionInput = document.getElementById('questionInput');
 const submitQuestionBtn = document.getElementById('submitQuestionBtn');
 const myQuestionsEl = document.getElementById('myQuestions');
-const reqPrev = document.getElementById('reqPrev');
-const reqNext = document.getElementById('reqNext');
+const videoUrl = document.getElementById('videoUrl');
+const videoStart = document.getElementById('videoStart');
+const videoEnd = document.getElementById('videoEnd');
+const playVideoBtn = document.getElementById('playVideoBtn');
 
 async function loadRoom() {
   try {
@@ -149,19 +151,15 @@ function renderMyQuestions() {
     myQuestions.map((q) => `<div class="my-q-item">${esc(q)}</div>`).join('');
 }
 
-/* Slide requests */
-let lastSlideReq = 0;
-function requestSlide(direction) {
-  const now = Date.now();
-  if (now - lastSlideReq < 2000) return;
-  lastSlideReq = now;
-  socket.emit('slide-request', { direction });
-  const btn = direction === 'next' ? reqNext : reqPrev;
-  btn.classList.add('req-sent');
-  setTimeout(() => btn.classList.remove('req-sent'), 600);
-}
-reqNext.addEventListener('click', () => requestSlide('next'));
-reqPrev.addEventListener('click', () => requestSlide('prev'));
+/* Video */
+playVideoBtn.addEventListener('click', () => {
+  if (!joined) return;
+  const url = videoUrl.value.trim();
+  if (!url) return;
+  socket.emit('play-video', { url, startSec: Number(videoStart.value) || 0, endSec: Number(videoEnd.value) || 60 });
+  playVideoBtn.textContent = '재생됨!';
+  setTimeout(() => { playVideoBtn.textContent = '▶ 재생'; }, 1200);
+});
 
 /* Socket events */
 socket.on('participant-count', (n) => { audienceCount.textContent = n; });
