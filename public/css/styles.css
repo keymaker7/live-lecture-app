@@ -984,8 +984,8 @@ body {
 /* Poll overlay on slide */
 /* 질문 알림 토스트 */
 .question-toast {
-  position: absolute;
-  top: 1.2rem;
+  position: fixed;
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #fff 0%, #f0eeff 100%);
@@ -993,7 +993,7 @@ body {
   border-radius: 12px;
   padding: 0.65rem 1.1rem;
   box-shadow: 0 6px 24px rgba(0,0,0,0.25);
-  z-index: 42;
+  z-index: 9000;
   max-width: 360px;
   min-width: 220px;
   animation: toastSlide 5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -1019,11 +1019,11 @@ body {
 }
 
 @keyframes toastSlide {
-  0%   { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.94); }
-  8%   { opacity: 1; transform: translateX(-50%) translateY(2px) scale(1.01); }
-  14%  { transform: translateX(-50%) translateY(0) scale(1); }
-  75%  { opacity: 1; }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.93); }
+  8%   { opacity: 1; transform: translateX(-50%) translateY(3px) scale(1.02); }
+  15%  { transform: translateX(-50%) translateY(0) scale(1); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
 
 .poll-overlay {

@@ -293,11 +293,10 @@ timerReset.addEventListener('click', () => {
 
 /* ── Question Toast ── */
 function spawnQuestionToast(nickname, text) {
-  const slideArea = document.getElementById('slideArea');
   const toast = document.createElement('div');
   toast.className = 'question-toast';
   toast.innerHTML = `<div class="q-toast-label">🙋 ${esc(nickname)} 질문</div><div class="q-toast-text">${esc(text)}</div>`;
-  slideArea.appendChild(toast);
+  document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 5100);
 }
 
