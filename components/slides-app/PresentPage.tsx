@@ -206,6 +206,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
       const bottom = Math.random() * 40 + 8;  // 8%~48% (not at top)
       setReactions((prev) => [...prev.slice(-5), { ...r, left, bottom }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== r.id)), 3000);
+      setActivityLog((prev) => [{ nickname: r.nickname, message: r.emoji, timestamp: Date.now() }, ...prev].slice(0, 50));
     });
     on("chat", (data) => {
       const c = data as { id: string; message: string; nickname: string; timestamp: number };
@@ -405,7 +406,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
         <aside className={`activity-panel ${activityCollapsed ? "collapsed" : ""}`}>
           <button className="activity-toggle" onClick={() => setActivityCollapsed(!activityCollapsed)}>💬</button>
           <div className="activity-content">
-            <h4>채팅 로그</h4>
+            <h4>채팅·이모지 로그</h4>
             <div className="activity-list">
               {activityLog.map((a, i) => (
                 <div key={i} className="activity-item">
