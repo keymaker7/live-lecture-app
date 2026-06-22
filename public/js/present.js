@@ -3,7 +3,7 @@ const roomId = params.get('room');
 if (!roomId) window.location.href = '/';
 
 const socket = io();
-socket.emit('presenter-join', { roomId });
+socket.on('connect', () => socket.emit('presenter-join', { roomId }));
 
 let joinUrl = '';
 let roomTitle = '연수';
@@ -138,7 +138,7 @@ socket.on('chat', ({ message, nickname, timestamp }) => {
 socket.on('participant-count', updateCount);
 socket.on('reaction-stats', renderReactionStats);
 socket.on('play-video', ({ url, startSec, endSec }) => {
-  const m = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  const m = url.match(/(?:v=|youtu\.be\/|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/);
   if (!m) return;
   videoFrame.src = `https://www.youtube.com/embed/${m[1]}?start=${startSec}&end=${endSec}&autoplay=1`;
   videoOverlay.classList.remove('hidden');

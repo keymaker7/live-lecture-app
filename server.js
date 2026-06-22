@@ -421,10 +421,11 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('play-video', ({ url, startSec, endSec }) => {
+  socket.on('play-video', ({ url, startSec, endSec }, callback) => {
     const room = rooms.get(socket.roomId);
-    if (!room) return;
+    if (!room) { callback?.({ ok: false }); return; }
     io.to(socket.roomId).emit('play-video', { url, startSec: Number(startSec) || 0, endSec: Number(endSec) || 60 });
+    callback?.({ ok: true });
   });
 
   socket.on('disconnect', () => {

@@ -4,6 +4,13 @@ if (!roomId) window.location.href = '/';
 
 const socket = io();
 let joined = false;
+let myNickname = null;
+
+socket.on('connect', () => {
+  if (myNickname) {
+    socket.emit('join-room', { roomId, nickname: myNickname });
+  }
+});
 let lastReactionAt = 0;
 let votedPollId = null;
 let myQuestions = [];
@@ -57,6 +64,7 @@ function doJoin() {
     if (!res?.ok) { showJoinError(res?.error || '참여에 실패했습니다.'); return; }
 
     joined = true;
+    myNickname = res.nickname;
     displayNickname.textContent = res.nickname;
     nicknameScreen.classList.add('hidden');
     audienceScreen.classList.remove('hidden');
@@ -156,9 +164,15 @@ playVideoBtn.addEventListener('click', () => {
   if (!joined) return;
   const url = videoUrl.value.trim();
   if (!url) return;
-  socket.emit('play-video', { url, startSec: Number(videoStart.value) || 0, endSec: Number(videoEnd.value) || 60 });
-  playVideoBtn.textContent = '재생됨!';
-  setTimeout(() => { playVideoBtn.textContent = '▶ 재생'; }, 1200);
+  socket.emit('play-video', { url, startSec: Number(videoStart.value) || 0, endSec: Number(videoEnd.value) || 60 }, (res) => {
+    if (res?.ok === false) {
+      playVideoBtn.textContent = '❌ 재접속 필요';
+      setTimeout(() => { playVideoBtn.textContent = '▶ 재생'; }, 2500);
+    } else {
+      playVideoBtn.textContent = '재생됨!';
+      setTimeout(() => { playVideoBtn.textContent = '▶ 재생'; }, 1200);
+    }
+  });
 });
 
 /* Socket events */
