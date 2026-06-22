@@ -520,14 +520,14 @@ body {
 .activity-panel {
   position: fixed;
   left: 0;
-  bottom: 1rem;
+  top: 3.5rem;
   z-index: 55;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   transition: transform 0.3s ease;
 }
 .emoji-log-panel {
-  bottom: 4.5rem;
+  top: 7.5rem;
 }
 
 .activity-panel.collapsed .activity-content {
@@ -1030,9 +1030,9 @@ body {
   color: var(--text-muted);
 }
 
-/* Activity panel offset for dock */
-.activity-panel { bottom: 2.5rem; }
-.emoji-log-panel { bottom: 6rem; }
+/* Activity panel top offsets (dock open doesn't change these) */
+.activity-panel { top: 3.5rem; }
+.emoji-log-panel { top: 7.5rem; }
 
 /* ── Join: tabs, poll, questions, slides ── */
 .poll-vote-panel {

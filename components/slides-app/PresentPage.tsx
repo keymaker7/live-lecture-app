@@ -320,11 +320,6 @@ export function PresentPage({ roomId }: PresentPageProps) {
               </div>
             ))}
           </div>
-          <div className="reaction-stats-bar">
-            {Object.entries(reactionStats).sort((a, b) => b[1] - a[1]).map(([e, c]) => (
-              <span key={e} className="stat-chip">{e} {c}</span>
-            ))}
-          </div>
         </aside>
 
         <main className="slide-area">
