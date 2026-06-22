@@ -265,6 +265,13 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
       const handleBroadcast = (event: string, payload: unknown) => {
         if (role === "presenter" && presenterCmdEvents.includes(event)) {
+          const p = payload as Record<string, unknown>;
+          // If the payload already has an `id`, this is our own processed rebroadcast
+          // coming back from Supabase — emit locally for display only, don't reprocess.
+          if (typeof p.id === "string" && (event === "chat" || event === "reaction")) {
+            emitLocal(event, payload);
+            return;
+          }
           handlePresenterCommand(event, payload as Record<string, unknown>);
           return;
         }
