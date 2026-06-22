@@ -39,7 +39,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [participantCount, setParticipantCount] = useState(0);
   const [reactionStats, setReactionStats] = useState<Record<string, number>>({});
-  const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; nickname: string }>>([]);
+  const [reactions, setReactions] = useState<Array<{ id: string; emoji: string; nickname: string; left: number; bottom: number }>>([]);
   const [chats, setChats] = useState<Array<{ id: string; message: string; nickname: string; timestamp: number }>>([]);
   const [activityLog, setActivityLog] = useState<Array<{ nickname: string; message: string; timestamp: number }>>([]);
   const [allChats, setAllChats] = useState<Array<{ message: string }>>([]);
@@ -202,7 +202,9 @@ export function PresentPage({ roomId }: PresentPageProps) {
 
     on("reaction", (data) => {
       const r = data as { id: string; emoji: string; nickname: string };
-      setReactions((prev) => [...prev.slice(-4), r]);
+      const left = Math.random() * 12 + 2;   // 2%~14% (left side)
+      const bottom = Math.random() * 40 + 8;  // 8%~48% (not at top)
+      setReactions((prev) => [...prev.slice(-5), { ...r, left, bottom }]);
       setTimeout(() => setReactions((prev) => prev.filter((x) => x.id !== r.id)), 3000);
     });
     on("chat", (data) => {
@@ -299,7 +301,12 @@ export function PresentPage({ roomId }: PresentPageProps) {
         <aside className="overlay-panel">
           <div className="reaction-stream">
             {reactions.map((r) => (
-              <div key={r.id} className="floating-emoji" title={r.nickname}>{r.emoji}</div>
+              <div
+                key={r.id}
+                className="floating-emoji"
+                title={r.nickname}
+                style={{ left: `${r.left}%`, bottom: `${r.bottom}%` }}
+              >{r.emoji}</div>
             ))}
           </div>
           <div className="chat-stream">
