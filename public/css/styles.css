@@ -526,6 +526,9 @@ body {
   align-items: flex-end;
   transition: transform 0.3s ease;
 }
+.emoji-log-panel {
+  bottom: 4.5rem;
+}
 
 .activity-panel.collapsed .activity-content {
   display: none;
@@ -1029,6 +1032,7 @@ body {
 
 /* Activity panel offset for dock */
 .activity-panel { bottom: 2.5rem; }
+.emoji-log-panel { bottom: 6rem; }
 
 /* ── Join: tabs, poll, questions, slides ── */
 .poll-vote-panel {
