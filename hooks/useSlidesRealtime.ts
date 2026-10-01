@@ -4,6 +4,14 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase-client";
 
+export interface ActiveVideo {
+  videoId: string;
+  url: string;
+  start: number;
+  end: number;
+  nickname: string;
+}
+
 export interface RoomState {
   poll: {
     id: string;
@@ -22,6 +30,13 @@ export interface RoomState {
   focusTimeline: Array<{ time: number; count: number }>;
   participantCount: number;
   reactionStats: Record<string, number>;
+  videoChatEnabled: boolean;
+  activeVideo: ActiveVideo | null;
+}
+
+function extractYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
 }
 
 type Handler = (data: unknown) => void;
@@ -36,6 +51,8 @@ function createEmptyState(): RoomState {
     focusTimeline: [],
     participantCount: 0,
     reactionStats: {},
+    videoChatEnabled: false,
+    activeVideo: null,
   };
 }
 
@@ -181,7 +198,10 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         if (!state.poll?.active || pollVotersRef.current.has(peerId)) return;
         if (optionIndex < 0 || optionIndex >= state.poll.options.length) return;
         pollVotersRef.current.add(peerId);
-        state.poll.options[optionIndex].votes += 1;
+        const newOptions = state.poll.options.map((o, i) =>
+          i === optionIndex ? { ...o, votes: o.votes + 1 } : o
+        );
+        state.poll = { ...state.poll, options: newOptions };
         await broadcastState();
         return;
       }
@@ -237,6 +257,33 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
             participantCount: participantsRef.current.size,
           },
         });
+        return;
+      }
+
+      if (event === "toggle-video-chat") {
+        state.videoChatEnabled = !state.videoChatEnabled;
+        if (!state.videoChatEnabled) state.activeVideo = null;
+        await broadcastState();
+        return;
+      }
+
+      if (event === "video-request") {
+        if (!state.videoChatEnabled) return;
+        const url = String(payload.url || "").trim();
+        const start = Math.max(0, Number(payload.start) || 0);
+        const end = Math.max(0, Number(payload.end) || 0);
+        const nickname = String(payload.nickname || "익명");
+        const videoId = extractYouTubeId(url);
+        if (!videoId) return;
+        state.activeVideo = { videoId, url, start, end, nickname };
+        await broadcastState();
+        return;
+      }
+
+      if (event === "clear-video") {
+        state.activeVideo = null;
+        await broadcastState();
+        return;
       }
     },
     [broadcast, broadcastState, getFocusBucket, roomId]
@@ -269,7 +316,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       ];
       const presenterCmdEvents = [
         "join-room", "leave-room", "reaction", "chat", "vote-poll",
-        "submit-question", "slide-request",
+        "submit-question", "slide-request", "video-request",
       ];
 
       const handleBroadcast = (event: string, payload: unknown) => {
@@ -335,7 +382,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
           await broadcastState();
           return;
         }
-        if (["create-poll", "close-poll", "resolve-question", "reset-slide-requests", "get-session-data"].includes(event)) {
+        if (["create-poll", "close-poll", "resolve-question", "reset-slide-requests", "get-session-data", "toggle-video-chat", "clear-video"].includes(event)) {
           const cmdPayload = { ...payload, peerId: clientId };
           await handlePresenterCommand(event, cmdPayload);
           if (event === "get-session-data") {

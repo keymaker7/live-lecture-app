@@ -15,7 +15,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [joined, setJoined] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [joinError, setJoinError] = useState("");
-  const [activeTab, setActiveTab] = useState<"react" | "question" | "slide">("react");
+  const [activeTab, setActiveTab] = useState<"react" | "question" | "video">("react");
   const [participantCount, setParticipantCount] = useState(0);
   const [chatInput, setChatInput] = useState("");
   const [questionInput, setQuestionInput] = useState("");
@@ -29,6 +29,11 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [myQuestions, setMyQuestions] = useState<string[]>([]);
   const [lastReactionAt, setLastReactionAt] = useState(0);
   const [sendLabel, setSendLabel] = useState("전송");
+  const [videoChatEnabled, setVideoChatEnabled] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoStart, setVideoStart] = useState("");
+  const [videoEnd, setVideoEnd] = useState("");
+  const [videoSubmitLabel, setVideoSubmitLabel] = useState("영상 요청");
 
   const { on, emit, ready } = useSlidesRealtime(roomId, "audience");
 
@@ -59,9 +64,13 @@ export function JoinPage({ roomId }: JoinPageProps) {
     if (!ready) return;
 
     on("room-state", (state) => {
-      const s = state as { poll?: typeof poll; participantCount?: number };
+      const s = state as { poll?: typeof poll; participantCount?: number; videoChatEnabled?: boolean };
       if (s.poll !== undefined) setPoll(s.poll?.active ? s.poll : null);
       if (s.participantCount !== undefined) setParticipantCount(s.participantCount);
+      if (s.videoChatEnabled !== undefined) {
+        setVideoChatEnabled(s.videoChatEnabled);
+        if (!s.videoChatEnabled) setActiveTab((t) => t === "video" ? "react" : t);
+      }
     });
     on("participant-count", (n) => setParticipantCount(n as number));
 
@@ -108,6 +117,18 @@ export function JoinPage({ roomId }: JoinPageProps) {
     if (!poll?.active || voted) return;
     emit("vote-poll", { optionIndex: index });
     setVoted(true);
+  };
+
+  const submitVideoRequest = () => {
+    if (!joined || !videoUrl.trim()) return;
+    const start = parseInt(videoStart) || 0;
+    const end = parseInt(videoEnd) || 0;
+    emit("video-request", { url: videoUrl.trim(), start, end, nickname: displayName });
+    setVideoUrl("");
+    setVideoStart("");
+    setVideoEnd("");
+    setVideoSubmitLabel("요청 완료!");
+    setTimeout(() => setVideoSubmitLabel("영상 요청"), 2000);
   };
 
   if (!joined) {
@@ -161,7 +182,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
         <nav className="audience-tabs">
           <button className={`aud-tab ${activeTab === "react" ? "active" : ""}`} onClick={() => setActiveTab("react")}>😊 반응</button>
           <button className={`aud-tab ${activeTab === "question" ? "active" : ""}`} onClick={() => setActiveTab("question")}>🙋 질문</button>
-          <button className={`aud-tab ${activeTab === "slide" ? "active" : ""}`} onClick={() => setActiveTab("slide")}>📱 슬라이드</button>
+          {videoChatEnabled && (
+            <button className={`aud-tab ${activeTab === "video" ? "active" : ""}`} onClick={() => setActiveTab("video")}>🎬 영상</button>
+          )}
         </nav>
 
         <main className="audience-main">
@@ -177,13 +200,13 @@ export function JoinPage({ roomId }: JoinPageProps) {
           {activeTab === "question" && (
             <div className="aud-panel active">
               <textarea
+                className="question-textarea"
                 placeholder="질문을 입력하세요..."
                 maxLength={300}
-                rows={3}
                 value={questionInput}
                 onChange={(e) => setQuestionInput(e.target.value)}
               />
-              <button className="btn-primary btn-sm" onClick={submitQuestion}>질문 등록</button>
+              <button className="btn-primary btn-full" onClick={submitQuestion}>질문 등록</button>
               <div className="my-questions">
                 {myQuestions.map((q, i) => (
                   <div key={i} className="my-q-item">✓ {q}</div>
@@ -191,12 +214,36 @@ export function JoinPage({ roomId }: JoinPageProps) {
               </div>
             </div>
           )}
-          {activeTab === "slide" && (
+          {activeTab === "video" && videoChatEnabled && (
             <div className="aud-panel active">
-              <p className="audience-guide">슬라이드 넘김을 요청하세요</p>
-              <div className="slide-req-btns">
-                <button className="btn-slide-req" onClick={() => emit("slide-request", { direction: "prev" })}>⏮ 이전 슬라이드</button>
-                <button className="btn-slide-req" onClick={() => emit("slide-request", { direction: "next" })}>다음 슬라이드 ⏭</button>
+              <div className="video-request-form">
+                <input
+                  type="url"
+                  className="video-url-input"
+                  placeholder="YouTube URL 입력..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <div className="video-time-inputs">
+                  <input
+                    type="number"
+                    className="video-time-input"
+                    placeholder="시작(초)"
+                    min={0}
+                    value={videoStart}
+                    onChange={(e) => setVideoStart(e.target.value)}
+                  />
+                  <span className="video-time-sep">~</span>
+                  <input
+                    type="number"
+                    className="video-time-input"
+                    placeholder="끝(초)"
+                    min={0}
+                    value={videoEnd}
+                    onChange={(e) => setVideoEnd(e.target.value)}
+                  />
+                </div>
+                <button className="btn-primary btn-full" onClick={submitVideoRequest}>{videoSubmitLabel}</button>
               </div>
             </div>
           )}
