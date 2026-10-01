@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
-  const room = getRoom(roomId);
+  const room = await getRoom(roomId);
   if (!room) {
     return NextResponse.json({ error: "연수를 찾을 수 없습니다." }, { status: 404 });
   }

@@ -14,14 +14,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "슬라이드 URL을 인식할 수 없습니다." }, { status: 400 });
   }
 
-  const room = createRoom({
+  let room;
+  try {
+    room = await createRoom({
     title: title || "연수",
     slideUrl,
     slideType: parsed.type,
     embedUrl: parsed.embedUrl ?? null,
     canvaDesignId: parsed.designId ?? null,
     canvaViewUrl: parsed.viewUrl ?? null,
-  });
+    });
+  } catch (e) {
+    console.error("[rooms] 연수 만들기 실패", e);
+    return NextResponse.json({ error: "연수를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." }, { status: 503 });
+  }
 
   return NextResponse.json({
     roomId: room.id,
