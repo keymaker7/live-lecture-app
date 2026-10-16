@@ -13,7 +13,8 @@ const { chromium } = await import(PW);
 const BASE = process.env.BASE || "http://localhost:3030";
 const N = Number(process.env.N || 40);
 const ACTIVITY_SEC = Number(process.env.ACTIVITY_SEC || 60);
-const LIMIT_PER_SEC = 80;
+// 40명 시험은 80(안전선), 60·80명 시험은 Supabase 무료 한도 100 으로 본다(Ironman 10/16 기준).
+const LIMIT_PER_SEC = Number(process.env.LIMIT || 80);
 const OUT = path.join(ROOT, "tests/out");
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -22,6 +23,10 @@ const env = Object.fromEntries(
     .filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).replace(/^"|"$/g, "")])
 );
 
+// 구글 슬라이드 iframe 이 내는 것(광고·로깅 차단, report-only CSP 보고)은 앱 오류가 아니라 뺀다.
+function isExternalNoise(t) {
+  return t.includes("ERR_BLOCKED_BY_CLIENT") || (t.includes("docs.google.com") && t.includes("report-only"));
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T0 = Date.now();
 const log = []; // [ms, who, dir, event]
@@ -69,11 +74,12 @@ class Phone {
       if (mine?.ok) { this.acked = true; this.name = mine.nickname; this.ackAt = Date.now(); }
       if (payload.poll !== undefined) this.poll = payload.poll?.active ? payload.poll : null;
     });
-    this.pub.on("broadcast", { event: "host-rejoined" }, () => {
+    this.pub.on("broadcast", { event: "host-rejoined" }, ({ payload }) => {
       mark("phone", "recv", "host-rejoined");
       if (!this.joinedOnce) return;
       this.acked = false;
-      setTimeout(() => this.join(), Math.random() * 4000); // 훅과 같은 값(REJOIN_SPREAD_MS)
+      const spread = Math.min(30000, Math.max(1000, Number(payload?.spreadMs) || 4000)); // 훅과 같은 규칙
+      setTimeout(() => this.join(), Math.random() * spread);
     });
     this.subscribed = new Promise((res) => this.pub.subscribe((s) => s === "SUBSCRIBED" && res()));
   }
@@ -153,7 +159,7 @@ const consoleErrors = [];
 let ignoredErrors = 0;
 host.on("console", (m) => {
   if (m.type() !== "error") return;
-  if (m.text().includes("ERR_BLOCKED_BY_CLIENT")) { ignoredErrors++; return; }
+  if (isExternalNoise(m.text())) { ignoredErrors++; return; }
   consoleErrors.push(m.text().slice(0, 200));
 });
 host.on("pageerror", (e) => consoleErrors.push("pageerror " + String(e).slice(0, 200)));
@@ -180,7 +186,8 @@ while (phones.some((p) => !p.acked) && Date.now() < joinDeadline) await sleep(20
 const acked = phones.filter((p) => p.acked).length;
 check(`${N}명 참가 확인(ack)`, acked === N, `${acked}/${N}, 마지막 ack ${((Math.max(...phones.map((p) => p.ackAt)) - joinStart) / 1000).toFixed(1)}초`);
 const minsu = phones.filter((p) => p.nick === "민수").map((p) => p.name).sort();
-check("닉네임 중복 구분", JSON.stringify(minsu) === JSON.stringify(["민수", "민수(2)", "민수(3)"]), minsu.join(", "));
+const expectMinsu = minsu.map((_, i) => (i === 0 ? "민수" : `민수(${i + 1})`)).sort();
+check("닉네임 중복 구분", minsu.length >= 3 && JSON.stringify(minsu) === JSON.stringify(expectMinsu), minsu.join(", "));
 await sleep(1500);
 check("발표 화면 인원", (await topCount(host)) === N, `${await topCount(host)}명`);
 
@@ -306,10 +313,10 @@ for (const [t, who, dir, ev] of log) {
 console.log("\n초당 메시지 (보냄 = 폰 httpSend + 발표자 방송 / 받음 = 발표자 수신 + 폰 수신)");
 for (const [k, r] of Object.entries(rates)) console.log(`  ${k}: 평균 보냄 ${r.avgSent} · 받음 ${r.avgRecv} · 합 ${r.avgTotal}/초 | 최고 1초 ${r.peak.total}(보냄 ${r.peak.sent}·받음 ${r.peak.recv})`);
 console.log("  활동 구간 이벤트별:", byEvent);
-check("초당 메시지 80건 이하(모든 구간 최고치)", !stopReason && Object.values(rates).every((r) => r.peak.total <= LIMIT_PER_SEC), stopReason || Object.entries(rates).map(([k, r]) => `${k} 최고 ${r.peak.total}`).join(", "));
+check(`초당 메시지 ${LIMIT_PER_SEC}건 이하(모든 구간 최고치)`, !stopReason && Object.values(rates).every((r) => r.peak.total <= LIMIT_PER_SEC), stopReason || Object.entries(rates).map(([k, r]) => `${k} 최고 ${r.peak.total}`).join(", "));
 check("발표 화면 콘솔 오류 0", consoleErrors.length === 0, consoleErrors.slice(0, 3).join(" | ") || `(슬라이드 iframe 차단 ${ignoredErrors}건 제외)`);
 
-fs.writeFileSync(path.join(OUT, "p1-result.json"), JSON.stringify({ roomId, n: N, results, rates, byEvent, phases: phases.map((p) => ({ ...p, t: (p.at - T0) / 1000 })), consoleErrors }, null, 2));
+fs.writeFileSync(path.join(OUT, `p1-result${N === 40 ? "" : "-" + N}.json`), JSON.stringify({ roomId, n: N, results, rates, byEvent, phases: phases.map((p) => ({ ...p, t: (p.at - T0) / 1000 })), consoleErrors }, null, 2));
 await Promise.all(phones.map((p) => p.close()));
 await browser.close();
 const fails = results.filter((r) => !r.pass).length;

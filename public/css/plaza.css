@@ -1,0 +1,275 @@
+/* 캐릭터 광장 (설계서 §3) — 움직임은 transform 만(lib/plaza/engine.ts), 반복 애니메이션도 transform·opacity 만 */
+
+.pz-root {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  pointer-events: none;
+  font-family: 'Nunito', 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+}
+/* 산책로: 슬라이드 하단 18% 반투명 띠 (도구 버튼 줄 위). 머리·말풍선은 띠 위 슬라이드로 올라와도 된다(잘리지 않게). */
+.pz-root[data-mode="walk"] {
+  bottom: 36px;
+  height: 18vh;
+  background: linear-gradient(to top, rgba(63, 106, 55, 0.62), rgba(79, 125, 69, 0.14));
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+}
+/* 광장: 위 38% 밤하늘 + 아래 잔디(46px 점무늬) */
+.pz-root[data-mode="plaza"] {
+  top: 44px;
+  bottom: 0;
+  z-index: 35;
+  overflow: hidden;
+  contain: layout paint;
+  background:
+    linear-gradient(#2a2650, #3b3470) top / 100% 38% no-repeat,
+    radial-gradient(rgba(255, 255, 255, 0.16) 2px, transparent 2.5px) 0 0 / 46px 46px,
+    linear-gradient(#4f7d45, #3f6a37);
+}
+.pz-root[data-mode="hidden"] { display: none; }
+
+.pz-sky, .pz-spot, .pz-title, .pz-teacher { display: none; }
+.pz-root[data-mode="plaza"] .pz-sky,
+.pz-root[data-mode="plaza"] .pz-spot,
+.pz-root[data-mode="plaza"] .pz-title,
+.pz-root[data-mode="plaza"] .pz-teacher { display: block; }
+
+.pz-sky { position: absolute; left: 0; right: 0; top: 0; height: 38%; }
+.pz-sky i {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #fff;
+  animation: pz-twinkle 2.4s ease-in-out infinite alternate;
+}
+.pz-spot {
+  position: absolute;
+  left: 50%;
+  top: 9%;
+  width: 30%;
+  height: 34%;
+  transform: translateX(-50%);
+  clip-path: polygon(40% 0, 60% 0, 100% 100%, 0 100%);
+  background: linear-gradient(rgba(255, 228, 110, 0.42), rgba(255, 228, 110, 0.06));
+}
+.pz-title {
+  position: absolute;
+  left: 50%;
+  top: 2.2%;
+  transform: translateX(-50%);
+  max-width: 70%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: clamp(26px, 3.2vw, 46px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, #ffd84d, #ff7eb3, #7ec8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+.pz-teacher {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -100%);
+  z-index: 1;
+}
+.pz-teacher img { height: 100%; width: auto; display: block; }
+.pz-teacher .pz-name { top: 100%; left: 50%; margin-top: 4px; }
+
+/* 캐릭터 한 명: .pz-ch(발 위치로 이동) > .pz-body(크기·통통·기울기·반전) */
+.pz-ch { position: absolute; left: 0; top: 0; will-change: transform; }
+.pz-body { position: absolute; bottom: 0; transform-origin: 50% 100%; will-change: transform; }
+.pz-sprite { position: relative; display: block; width: 100%; height: 100%; user-select: none; }
+.pz-shadow {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -5px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.22);
+}
+.pz-egg { transform-origin: 50% 90%; animation: pz-wobble 0.32s ease-in-out infinite alternate; }
+
+/* 등급 후광: Lv2~3 흰색, Lv4~5 금색 깜빡임, Lv6+ 무지개 링 */
+.pz-halo { position: absolute; display: none; pointer-events: none; }
+.pz-halo.h-white,
+.pz-halo.h-gold {
+  display: block;
+  left: -22%;
+  right: -22%;
+  top: -8%;
+  bottom: -2%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.6), transparent);
+}
+.pz-halo.h-gold {
+  background: radial-gradient(closest-side, rgba(255, 216, 77, 0.85), transparent);
+  animation: pz-pulse 1.3s ease-in-out infinite;
+}
+.pz-halo.h-rainbow {
+  display: block;
+  left: 50%;
+  top: 50%;
+  width: 135%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(#ff4d6d, #ffd84d, #8dffb0, #7ec8ff, #c39bff, #ff4d6d);
+  -webkit-mask: radial-gradient(closest-side, transparent 80%, #000 82%, #000 97%, transparent 99%);
+  mask: radial-gradient(closest-side, transparent 80%, #000 82%, #000 97%, transparent 99%);
+  opacity: 0.8;
+  animation: pz-spin 3s linear infinite;
+}
+
+/* 이름표: 검정 알약 + Lv 배지. 말하는 중 빨강, 강사 노랑 */
+.pz-name {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  background: rgba(17, 17, 24, 0.8);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  padding: 2px 9px 2px 3px;
+  border-radius: 999px;
+}
+.pz-root[data-mode="walk"] .pz-name { font-size: 11px; top: 3px; }
+.pz-lv {
+  background: #ffd84d;
+  color: #3b2a00;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 0.82em;
+}
+.pz-name-host { background: #ffd84d; color: #3b2a00; padding: 2px 10px; }
+.pz-speaking .pz-name { background: #e5484d; }
+.pz-zzz { display: none; }
+.pz-sleep .pz-zzz { display: inline; }
+.pz-sleep .pz-name { opacity: 0.65; }
+
+/* 말풍선 — 위치는 엔진이 transform 으로, 꼬리는 --tail 로 */
+.pz-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  max-width: 280px;
+  background: #fff;
+  color: #222;
+  border-radius: 16px;
+  padding: 8px 13px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  animation: pz-bubble-in 0.18s ease-out;
+}
+.pz-root[data-mode="walk"] .pz-bubble { font-size: 15px; max-width: 240px; }
+.pz-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: var(--tail, 50%);
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #fff;
+  border-bottom: 0;
+}
+
+.pz-float, .pz-ask, .pz-lvup, .pz-sparkle {
+  position: absolute;
+  left: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.pz-float { font-size: 32px; animation: pz-rise 1.7s ease-out forwards; }
+.pz-ask { font-size: 36px; animation: pz-ask 2s ease-in-out forwards; }
+.pz-sparkle { font-size: 44px; animation: pz-pop 0.9s ease-out forwards; }
+.pz-lvup {
+  font-size: 18px;
+  font-weight: 900;
+  color: #ffd84d;
+  -webkit-text-stroke: 1px #6b3f00;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  animation: pz-rise 1.8s ease-out forwards;
+}
+
+.pz-more {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  z-index: 200000;
+  background: rgba(17, 17, 24, 0.7);
+  color: #fff;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* 상단 알림(최대 3개) */
+.pz-notices {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.pz-notice {
+  background: rgba(255, 255, 255, 0.96);
+  border: 2px solid #ffd84d;
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-weight: 800;
+  color: #3b3470;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  animation: pz-notice 3.6s ease forwards;
+}
+
+.pz-confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 150; pointer-events: none; }
+
+/* 발표자 보기 버튼 */
+.pz-controls { display: flex; gap: 0.35rem; align-items: center; margin-left: 0.75rem; }
+.pz-controls button {
+  background: rgba(255, 255, 255, 0.85);
+  border: 2px solid var(--border, #fce7f3);
+  border-radius: 8px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-dark, #4c4f69);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pz-controls button.on { border-color: var(--accent-hover, #a78bfa); background: #f3efff; font-weight: 700; }
+
+@keyframes pz-twinkle { from { opacity: 0.25; transform: scale(0.7); } to { opacity: 1; transform: scale(1.2); } }
+@keyframes pz-wobble { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@keyframes pz-pulse { 0%, 100% { opacity: 0.55; transform: scale(0.92); } 50% { opacity: 1; transform: scale(1.06); } }
+@keyframes pz-spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes pz-rise { 0% { opacity: 0; transform: translate(-50%, 10px) scale(0.6); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.1); } 100% { opacity: 0; transform: translate(-50%, -70px) scale(1); } }
+@keyframes pz-ask { 0% { opacity: 0; transform: translate(-50%, 8px); } 15%, 85% { opacity: 1; transform: translate(-50%, 0); } 50% { transform: translate(-50%, -8px); } 100% { opacity: 0; transform: translate(-50%, -4px); } }
+@keyframes pz-pop { 0% { opacity: 0; transform: translate(-50%, 20px) scale(0.3); } 40% { opacity: 1; transform: translate(-50%, 0) scale(1.4); } 100% { opacity: 0; transform: translate(-50%, -20px) scale(1.8); } }
+@keyframes pz-bubble-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pz-notice { 0% { opacity: 0; transform: translateY(-10px); } 8%, 85% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-6px); } }

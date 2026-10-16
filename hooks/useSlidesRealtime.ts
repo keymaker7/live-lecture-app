@@ -7,6 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase-client";
 import { HostLock, type HostStatus } from "@/lib/realtime/host-lock";
 import { countMessage } from "@/lib/realtime/stats";
 import { hostTabId, readJSON, stablePid, writeJSON } from "@/lib/realtime/storage";
+import { resolveCharacter } from "@/lib/plaza/characters";
 
 // 통신 구조 (설계서 §2)
 //   slides-room:{roomId}  공용 — 발표자만 보낸다. 폰은 듣기만: room-state(묶어서 초당 최대 1회), host-rejoined
@@ -46,7 +47,11 @@ export interface RoomState {
 export interface Participant {
   pid: string;
   nickname: string;
+  /** 동물 캐릭터 id (public/characters) */
+  character: string;
   joinedAt: number;
+  /** 마지막 활동(입장·채팅·반응·질문·투표) — 5분 넘으면 광장에서 💤 */
+  lastActive: number;
   online: boolean;
   chats: number;
   reactions: number;
@@ -58,6 +63,7 @@ export interface JoinAck {
   pid: string;
   ok: boolean;
   nickname?: string;
+  character?: string;
   error?: string;
 }
 
@@ -97,7 +103,8 @@ const FLUSH_GAP_MS = 1250;
 const FLUSH_BATCH_MS = 120;
 const SAVE_DEBOUNCE_MS = 2000;
 const JOIN_RETRY_MS = 5000;
-const REJOIN_SPREAD_MS = 4000;
+// 발표자가 돌아왔을 때 폰들이 다시 들어오는 시간을 인원에 맞춰 흩는다(재입장 초당 약 7건 이하).
+export const rejoinSpreadMs = (people: number) => Math.min(30000, Math.max(4000, people * 150));
 
 const CMD_EVENTS = [
   "join-room", "leave-room", "reaction", "chat", "vote-poll",
@@ -165,6 +172,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
   // ── 참가자 상태 ──
   const myNickRef = useRef("");
+  const myCharRef = useRef("");
   const ackedRef = useRef(false);
   const joinRetryRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastVoteRef = useRef<{ pollId: string; optionIndex: number } | null>(null);
@@ -248,7 +256,12 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     if (!snap || snap.v !== 1) return false;
     stateRef.current = { ...createEmptyState(), ...snap.state };
     participantsRef.current = new Map(
-      (snap.participants || []).map((p) => [p.pid, { ...p, online: false }])
+      (snap.participants || []).map((p) => [p.pid, {
+        ...p,
+        character: resolveCharacter(p.character, p.nickname),
+        lastActive: p.lastActive || p.joinedAt,
+        online: false,
+      }])
     );
     pollVotersRef.current = new Set(snap.pollVoters || []);
     allChatsRef.current = snap.chats || [];
@@ -317,14 +330,24 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     if (!p) {
       const base = str(nickname, 20) || "익명";
       const names = [...participantsRef.current.values()].map((x) => x.nickname);
-      p = { pid, nickname: uniqueNickname(base, names), joinedAt: Date.now(), online: true, chats: 0, reactions: 0, questions: 0, votes: 0 };
+      const nick = uniqueNickname(base, names);
+      const now = Date.now();
+      p = { pid, nickname: nick, character: resolveCharacter(null, nick), joinedAt: now, lastActive: now, online: true, chats: 0, reactions: 0, questions: 0, votes: 0 };
       participantsRef.current.set(pid, p);
-      pendingAcksRef.current.push({ pid, ok: true, nickname: p.nickname });
+      pendingAcksRef.current.push({ pid, ok: true, nickname: p.nickname, character: p.character });
+      emitLocal("participant-joined", { participant: p, isNew: true });
     } else if (!p.online) {
       p.online = true;
+      emitLocal("participant-joined", { participant: p, isNew: false });
     }
+    p.lastActive = Date.now();
     return p;
-  }, []);
+  }, [emitLocal]);
+
+  /** 활동 수가 바뀐 참가자 — 광장 캐릭터 레벨·💤 갱신용(로컬만). */
+  const touched = useCallback((p: Participant | null) => {
+    if (p) emitLocal("participant-update", { ...p });
+  }, [emitLocal]);
 
   const handleCommand = useCallback(
     (event: string, payload: Record<string, unknown>) => {
@@ -341,28 +364,36 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         }
         const existing = participantsRef.current.get(pid);
         const others = [...participantsRef.current.values()].filter((x) => x.pid !== pid).map((x) => x.nickname);
+        const now = Date.now();
         if (existing) {
           // 같은 폰이 다시 들어옴 — 이름을 바꾼 게 아니면 그대로(민수(2)는 민수(2)로)
           const sameBase = existing.nickname === nickname || existing.nickname.replace(/\(\d+\)$/, "") === nickname;
           if (!sameBase) existing.nickname = uniqueNickname(nickname, others);
+          if (payload.character) existing.character = resolveCharacter(payload.character, existing.nickname);
           existing.online = true;
+          existing.lastActive = now;
         } else {
+          const nick = uniqueNickname(nickname, others);
           participantsRef.current.set(pid, {
-            pid, nickname: uniqueNickname(nickname, others), joinedAt: Date.now(), online: true,
+            pid, nickname: nick, character: resolveCharacter(payload.character, nick),
+            joinedAt: now, lastActive: now, online: true,
             chats: 0, reactions: 0, questions: 0, votes: 0,
           });
         }
         const p = participantsRef.current.get(pid)!;
         pendingAcksRef.current = pendingAcksRef.current.filter((a) => a.pid !== pid);
-        pendingAcksRef.current.push({ pid, ok: true, nickname: p.nickname });
-        emitLocal("participant-joined", p);
+        pendingAcksRef.current.push({ pid, ok: true, nickname: p.nickname, character: p.character });
+        emitLocal("participant-joined", { participant: { ...p }, isNew: !existing });
         changed();
         return;
       }
 
       if (event === "leave-room") {
         const p = participantsRef.current.get(pid);
-        if (p) p.online = false;
+        if (p) {
+          p.online = false;
+          emitLocal("participant-left", { ...p });
+        }
         changed();
         return;
       }
@@ -372,6 +403,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         if (!emoji) return;
         const p = participantFor(pid, payload.nickname);
         if (p) p.reactions += 1;
+        touched(p);
         state.reactionStats[emoji] = (state.reactionStats[emoji] || 0) + 1;
         getFocusBucket().count += 1;
         const item: ReactionItem = { emoji, nickname: p?.nickname ?? (str(payload.nickname, 20) || "익명"), id: uuidv4(), timestamp: Date.now(), pid };
@@ -389,6 +421,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         if (!message) return;
         const p = participantFor(pid, payload.nickname);
         if (p) p.chats += 1;
+        touched(p);
         const item: ChatItem = { message, nickname: p?.nickname ?? (str(payload.nickname, 20) || "익명"), id: uuidv4(), timestamp: Date.now(), pid };
         allChatsRef.current.push(item);
         if (allChatsRef.current.length > HISTORY_MAX * 2) allChatsRef.current.splice(0, HISTORY_MAX);
@@ -424,6 +457,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         pollVotersRef.current.add(pid);
         const p = participantFor(pid, payload.nickname);
         if (p) p.votes += 1;
+        touched(p);
         state.poll = { ...state.poll, options: state.poll.options.map((o, i) => (i === optionIndex ? { ...o, votes: o.votes + 1 } : o)) };
         changed(); // 폰 상태는 그대로라 방송은 안 나간다(flush 가 같은 내용이면 건너뜀)
         return;
@@ -434,6 +468,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         if (!text) return;
         const p = participantFor(pid, payload.nickname);
         if (p) p.questions += 1;
+        touched(p);
         state.questions.push({ id: uuidv4(), text, nickname: p?.nickname ?? (str(payload.nickname, 20) || "익명"), timestamp: Date.now(), answered: false });
         if (p) emitLocal("question", { pid, nickname: p.nickname });
         changed();
@@ -490,7 +525,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         return;
       }
     },
-    [changed, emitLocal, getFocusBucket, participantFor, scheduleFlush, scheduleSave]
+    [changed, emitLocal, getFocusBucket, participantFor, scheduleFlush, scheduleSave, touched]
   );
 
   // ───────────────────────── 참가자 ─────────────────────────
@@ -512,7 +547,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
   const sendJoin = useCallback(() => {
     if (!myNickRef.current) return;
-    void audienceSend("join-room", { pid: pidRef.current, nickname: myNickRef.current });
+    void audienceSend("join-room", { pid: pidRef.current, nickname: myNickRef.current, character: myCharRef.current || undefined });
   }, [audienceSend]);
 
   const startJoinRetry = useCallback(() => {
@@ -558,12 +593,17 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         // 폰들에게 "발표자 돌아왔다" — 저장해 둔 pid·닉네임으로 다시 들어오고, 못 받은 표를 다시 보낸다.
         // 이것도 전원 방송 1회라, 다음 상태 방송은 1초 뒤로 민다(전원 방송은 초당 1회까지).
         countMessage("sent", "host-rejoined");
-        void publicCh.send({ type: "broadcast", event: "host-rejoined", payload: { at: Date.now() } });
+        void publicCh.send({
+          type: "broadcast",
+          event: "host-rejoined",
+          payload: { at: Date.now(), spreadMs: rejoinSpreadMs(participantsRef.current.size) },
+        });
         lastFlushAtRef.current = Date.now();
         changed();
         emitLocal("slide-request-update", { ...stateRef.current.slideRequests });
         emitLocal("reaction-stats", { ...stateRef.current.reactionStats });
         emitLocal("history", { chats: allChatsRef.current, reactions: allReactionsRef.current });
+        emitLocal("participants", [...participantsRef.current.values()].map((x) => ({ ...x })));
       };
 
       const lock = new HostLock(roomId, tabIdRef.current, {
@@ -638,16 +678,17 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       }
       emitLocal("room-state", s);
     });
-    publicCh.on("broadcast", { event: "host-rejoined" }, () => {
+    publicCh.on("broadcast", { event: "host-rejoined" }, ({ payload }) => {
       countMessage("recv", "host-rejoined");
+      const spread = Math.min(30000, Math.max(1000, Number((payload as { spreadMs?: number })?.spreadMs) || 4000));
       if (!myNickRef.current) return;
       ackedRef.current = false;
-      // 40명이 한꺼번에 몰리지 않게 0~4초 흩어서(재입장 초당 약 10건)
+      // 한꺼번에 몰리지 않게 발표자가 정해 준 시간(인원×0.15초, 최소 4초) 안에서 흩어서
       setTimeout(() => {
         sendJoin();
         const v = lastVoteRef.current;
         if (v) void audienceSend("vote-poll", { pid, nickname: myNickRef.current, ...v });
-      }, Math.random() * REJOIN_SPREAD_MS);
+      }, Math.random() * spread);
       startJoinRetry();
     });
     publicCh.subscribe((status) => {
@@ -686,6 +727,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
           emitLocal("slide-request-update", { ...stateRef.current.slideRequests });
           emitLocal("reaction-stats", { ...stateRef.current.reactionStats });
           emitLocal("history", { chats: allChatsRef.current, reactions: allReactionsRef.current });
+          emitLocal("participants", [...participantsRef.current.values()].map((x) => ({ ...x })));
           return;
         }
         if (event === "get-session-data") {
@@ -701,6 +743,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       if (event === "join-room") {
         const nickname = str(payload.nickname, 20);
         myNickRef.current = nickname;
+        myCharRef.current = str(payload.character, 40);
         ackedRef.current = false;
         if (callback) {
           const once: Handler = (res) => {

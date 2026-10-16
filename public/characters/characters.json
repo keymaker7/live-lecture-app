@@ -1,0 +1,426 @@
+[
+ {
+  "id": "a01_rabbit",
+  "name": "토끼",
+  "kind": "animal",
+  "file": "/characters/a01_rabbit.webp",
+  "w": 215,
+  "h": 400
+ },
+ {
+  "id": "a02_bear",
+  "name": "곰",
+  "kind": "animal",
+  "file": "/characters/a02_bear.webp",
+  "w": 266,
+  "h": 400
+ },
+ {
+  "id": "a03_cat",
+  "name": "고양이",
+  "kind": "animal",
+  "file": "/characters/a03_cat.webp",
+  "w": 249,
+  "h": 400
+ },
+ {
+  "id": "a04_puppy",
+  "name": "강아지",
+  "kind": "animal",
+  "file": "/characters/a04_puppy.webp",
+  "w": 304,
+  "h": 400
+ },
+ {
+  "id": "a05_fox",
+  "name": "여우",
+  "kind": "animal",
+  "file": "/characters/a05_fox.webp",
+  "w": 248,
+  "h": 400
+ },
+ {
+  "id": "a06_panda",
+  "name": "판다",
+  "kind": "animal",
+  "file": "/characters/a06_panda.webp",
+  "w": 253,
+  "h": 400
+ },
+ {
+  "id": "a07_penguin",
+  "name": "펭귄",
+  "kind": "animal",
+  "file": "/characters/a07_penguin.webp",
+  "w": 243,
+  "h": 400
+ },
+ {
+  "id": "a08_koala",
+  "name": "코알라",
+  "kind": "animal",
+  "file": "/characters/a08_koala.webp",
+  "w": 292,
+  "h": 400
+ },
+ {
+  "id": "a09_tiger",
+  "name": "호랑이",
+  "kind": "animal",
+  "file": "/characters/a09_tiger.webp",
+  "w": 264,
+  "h": 400
+ },
+ {
+  "id": "a10_lion",
+  "name": "사자",
+  "kind": "animal",
+  "file": "/characters/a10_lion.webp",
+  "w": 257,
+  "h": 400
+ },
+ {
+  "id": "a11_squirrel",
+  "name": "다람쥐",
+  "kind": "animal",
+  "file": "/characters/a11_squirrel.webp",
+  "w": 262,
+  "h": 400
+ },
+ {
+  "id": "a12_hamster",
+  "name": "햄스터",
+  "kind": "animal",
+  "file": "/characters/a12_hamster.webp",
+  "w": 248,
+  "h": 400
+ },
+ {
+  "id": "a13_otter",
+  "name": "수달",
+  "kind": "animal",
+  "file": "/characters/a13_otter.webp",
+  "w": 250,
+  "h": 400
+ },
+ {
+  "id": "a14_raccoon",
+  "name": "너구리",
+  "kind": "animal",
+  "file": "/characters/a14_raccoon.webp",
+  "w": 266,
+  "h": 400
+ },
+ {
+  "id": "a15_sheep",
+  "name": "양",
+  "kind": "animal",
+  "file": "/characters/a15_sheep.webp",
+  "w": 290,
+  "h": 400
+ },
+ {
+  "id": "a16_pig",
+  "name": "돼지",
+  "kind": "animal",
+  "file": "/characters/a16_pig.webp",
+  "w": 294,
+  "h": 400
+ },
+ {
+  "id": "a17_duck",
+  "name": "오리",
+  "kind": "animal",
+  "file": "/characters/a17_duck.webp",
+  "w": 224,
+  "h": 400
+ },
+ {
+  "id": "a18_owl",
+  "name": "부엉이",
+  "kind": "animal",
+  "file": "/characters/a18_owl.webp",
+  "w": 256,
+  "h": 400
+ },
+ {
+  "id": "a19_frog",
+  "name": "개구리",
+  "kind": "animal",
+  "file": "/characters/a19_frog.webp",
+  "w": 279,
+  "h": 400
+ },
+ {
+  "id": "a20_hedgehog",
+  "name": "고슴도치",
+  "kind": "animal",
+  "file": "/characters/a20_hedgehog.webp",
+  "w": 256,
+  "h": 400
+ },
+ {
+  "id": "a21_elephant",
+  "name": "코끼리",
+  "kind": "animal",
+  "file": "/characters/a21_elephant.webp",
+  "w": 325,
+  "h": 400
+ },
+ {
+  "id": "a22_giraffe",
+  "name": "기린",
+  "kind": "animal",
+  "file": "/characters/a22_giraffe.webp",
+  "w": 270,
+  "h": 400
+ },
+ {
+  "id": "a23_monkey",
+  "name": "원숭이",
+  "kind": "animal",
+  "file": "/characters/a23_monkey.webp",
+  "w": 290,
+  "h": 400
+ },
+ {
+  "id": "a24_cow",
+  "name": "송아지",
+  "kind": "animal",
+  "file": "/characters/a24_cow.webp",
+  "w": 291,
+  "h": 400
+ },
+ {
+  "id": "a25_horse",
+  "name": "조랑말",
+  "kind": "animal",
+  "file": "/characters/a25_horse.webp",
+  "w": 211,
+  "h": 400
+ },
+ {
+  "id": "a26_deer",
+  "name": "아기사슴",
+  "kind": "animal",
+  "file": "/characters/a26_deer.webp",
+  "w": 255,
+  "h": 400
+ },
+ {
+  "id": "a27_mouse",
+  "name": "생쥐",
+  "kind": "animal",
+  "file": "/characters/a27_mouse.webp",
+  "w": 279,
+  "h": 400
+ },
+ {
+  "id": "a28_chick",
+  "name": "병아리",
+  "kind": "animal",
+  "file": "/characters/a28_chick.webp",
+  "w": 227,
+  "h": 400
+ },
+ {
+  "id": "a29_dolphin",
+  "name": "돌고래",
+  "kind": "animal",
+  "file": "/characters/a29_dolphin.webp",
+  "w": 237,
+  "h": 400
+ },
+ {
+  "id": "a30_whale",
+  "name": "고래",
+  "kind": "animal",
+  "file": "/characters/a30_whale.webp",
+  "w": 245,
+  "h": 400
+ },
+ {
+  "id": "a31_seal",
+  "name": "물범",
+  "kind": "animal",
+  "file": "/characters/a31_seal.webp",
+  "w": 248,
+  "h": 400
+ },
+ {
+  "id": "a32_polarbear",
+  "name": "북극곰",
+  "kind": "animal",
+  "file": "/characters/a32_polarbear.webp",
+  "w": 252,
+  "h": 400
+ },
+ {
+  "id": "a33_redpanda",
+  "name": "레서판다",
+  "kind": "animal",
+  "file": "/characters/a33_redpanda.webp",
+  "w": 280,
+  "h": 400
+ },
+ {
+  "id": "a34_sloth",
+  "name": "나무늘보",
+  "kind": "animal",
+  "file": "/characters/a34_sloth.webp",
+  "w": 250,
+  "h": 400
+ },
+ {
+  "id": "a35_hippo",
+  "name": "하마",
+  "kind": "animal",
+  "file": "/characters/a35_hippo.webp",
+  "w": 240,
+  "h": 400
+ },
+ {
+  "id": "a36_rhino",
+  "name": "코뿔소",
+  "kind": "animal",
+  "file": "/characters/a36_rhino.webp",
+  "w": 248,
+  "h": 400
+ },
+ {
+  "id": "a37_zebra",
+  "name": "얼룩말",
+  "kind": "animal",
+  "file": "/characters/a37_zebra.webp",
+  "w": 220,
+  "h": 400
+ },
+ {
+  "id": "a38_kangaroo",
+  "name": "캥거루",
+  "kind": "animal",
+  "file": "/characters/a38_kangaroo.webp",
+  "w": 226,
+  "h": 400
+ },
+ {
+  "id": "a39_turtle",
+  "name": "거북이",
+  "kind": "animal",
+  "file": "/characters/a39_turtle.webp",
+  "w": 250,
+  "h": 400
+ },
+ {
+  "id": "a40_octopus",
+  "name": "문어",
+  "kind": "animal",
+  "file": "/characters/a40_octopus.webp",
+  "w": 284,
+  "h": 400
+ },
+ {
+  "id": "a41_crab",
+  "name": "꽃게",
+  "kind": "animal",
+  "file": "/characters/a41_crab.webp",
+  "w": 297,
+  "h": 400
+ },
+ {
+  "id": "a42_unicorn",
+  "name": "유니콘",
+  "kind": "animal",
+  "file": "/characters/a42_unicorn.webp",
+  "w": 228,
+  "h": 400
+ },
+ {
+  "id": "a43_dino",
+  "name": "공룡",
+  "kind": "animal",
+  "file": "/characters/a43_dino.webp",
+  "w": 244,
+  "h": 400
+ },
+ {
+  "id": "a44_dragon",
+  "name": "드래곤",
+  "kind": "animal",
+  "file": "/characters/a44_dragon.webp",
+  "w": 234,
+  "h": 400
+ },
+ {
+  "id": "a45_axolotl",
+  "name": "우파루파",
+  "kind": "animal",
+  "file": "/characters/a45_axolotl.webp",
+  "w": 306,
+  "h": 400
+ },
+ {
+  "id": "a46_alpaca",
+  "name": "알파카",
+  "kind": "animal",
+  "file": "/characters/a46_alpaca.webp",
+  "w": 203,
+  "h": 400
+ },
+ {
+  "id": "a47_capybara",
+  "name": "카피바라",
+  "kind": "animal",
+  "file": "/characters/a47_capybara.webp",
+  "w": 243,
+  "h": 400
+ },
+ {
+  "id": "a48_flamingo",
+  "name": "플라밍고",
+  "kind": "animal",
+  "file": "/characters/a48_flamingo.webp",
+  "w": 207,
+  "h": 400
+ },
+ {
+  "id": "a49_parrot",
+  "name": "앵무새",
+  "kind": "animal",
+  "file": "/characters/a49_parrot.webp",
+  "w": 239,
+  "h": 400
+ },
+ {
+  "id": "a50_shark",
+  "name": "상어",
+  "kind": "animal",
+  "file": "/characters/a50_shark.webp",
+  "w": 251,
+  "h": 400
+ },
+ {
+  "id": "e01_egg",
+  "name": "알",
+  "kind": "egg",
+  "file": "/characters/e01_egg.webp",
+  "w": 301,
+  "h": 400
+ },
+ {
+  "id": "e02_egg_crack",
+  "name": "금 간 알",
+  "kind": "egg",
+  "file": "/characters/e02_egg_crack.webp",
+  "w": 285,
+  "h": 400
+ },
+ {
+  "id": "h01_teacher",
+  "name": "강사 로봇",
+  "kind": "host",
+  "file": "/characters/h01_teacher.webp",
+  "w": 252,
+  "h": 400
+ }
+]

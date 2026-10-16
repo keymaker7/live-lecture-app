@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSlidesRealtime, type AudienceState, type JoinAck } from "@/hooks/useSlidesRealtime";
 import { readText, writeText } from "@/lib/realtime/storage";
+import { ANIMALS, characterById, characterForNickname } from "@/lib/plaza/characters";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "👏", "🔥", "💡", "🎉"];
 
@@ -14,6 +15,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [roomTitle, setRoomTitle] = useState("연수");
   const [nickname, setNickname] = useState("");
   const [joined, setJoined] = useState(false);
+  // 참가 2단계: 닉네임 → 캐릭터 고르기(안 고르면 닉네임으로 자동)
+  const [step, setStep] = useState<"nick" | "pick">("nick");
+  const [character, setCharacter] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [joinError, setJoinError] = useState("");
   const [activeTab, setActiveTab] = useState<"react" | "question" | "video">("react");
@@ -39,9 +43,11 @@ export function JoinPage({ roomId }: JoinPageProps) {
   // 같은 연수에 다시 들어올 때 쓰던 닉네임을 채워 둔다(참가자 ID 는 훅이 기억).
   useEffect(() => {
     const saved = readText(`ll:nick:${roomId}`);
+    const savedChar = readText(`ll:char:${roomId}`);
     // localStorage 는 브라우저에서만 읽혀 첫 렌더(서버)와 맞추려고 effect 에서 채운다
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setNickname(saved);
+    if (savedChar && characterById(savedChar)) setCharacter(savedChar);
   }, [roomId]);
 
   useEffect(() => {
@@ -92,6 +98,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
     on("join-ack", (res) => {
       const ack = res as JoinAck;
       if (ack.ok && ack.nickname) setDisplayName(ack.nickname);
+      if (ack.ok && ack.character) setCharacter(ack.character);
       else if (!ack.ok) {
         setJoined(false);
         setJoinError(ack.error || "참여하지 못했습니다.");
@@ -101,17 +108,30 @@ export function JoinPage({ roomId }: JoinPageProps) {
     return () => {};
   }, [ready, on]);
 
-  const handleJoin = () => {
-    const trimmed = nickname.trim();
-    if (!trimmed) {
+  const toPick = () => {
+    if (!nickname.trim()) {
       setJoinError("닉네임을 입력해주세요.");
       return;
     }
     setJoinError("");
+    setStep("pick");
+  };
+
+  const handleJoin = (chosen: string) => {
+    const trimmed = nickname.trim();
+    if (!trimmed) {
+      setStep("nick");
+      setJoinError("닉네임을 입력해주세요.");
+      return;
+    }
+    const finalChar = chosen || characterForNickname(trimmed).id;
+    setJoinError("");
     setDisplayName(trimmed);
+    setCharacter(finalChar);
     setJoined(true);
     writeText(`ll:nick:${roomId}`, trimmed);
-    emit("join-room", { roomId, nickname: trimmed });
+    if (chosen) writeText(`ll:char:${roomId}`, chosen);
+    emit("join-room", { roomId, nickname: trimmed, character: chosen || undefined });
   };
 
   const sendReaction = (emoji: string) => {
@@ -158,6 +178,39 @@ export function JoinPage({ roomId }: JoinPageProps) {
     setTimeout(() => setVideoSubmitLabel("영상 요청"), 2000);
   };
 
+  if (!joined && step === "pick") {
+    return (
+      <div className="join-page">
+        <div className="join-screen pick-screen">
+          <div className="join-card pick-card">
+            <h1>내 캐릭터 고르기</h1>
+            <p className="join-subtitle">{nickname.trim()} 님, 광장에서 걸어다닐 친구를 골라요</p>
+            <div className="char-grid" role="radiogroup" aria-label="캐릭터">
+              {ANIMALS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={character === c.id}
+                  className={`char-cell ${character === c.id ? "selected" : ""}`}
+                  onClick={() => setCharacter(c.id)}
+                >
+                  <img src={c.file} alt="" loading="lazy" draggable={false} />
+                  <span>{c.name}</span>
+                </button>
+              ))}
+            </div>
+            <button className="btn-primary btn-large" onClick={() => handleJoin(character)} disabled={!character}>
+              {character ? `${characterById(character)?.name ?? ""}(으)로 참여하기` : "캐릭터를 눌러 고르세요"}
+            </button>
+            <button className="btn-ghost btn-full pick-skip" onClick={() => handleJoin("")}>건너뛰기 (자동으로 정해요)</button>
+            <button className="pick-back" onClick={() => setStep("nick")}>← 닉네임 다시 쓰기</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!joined) {
     return (
       <div className="join-page">
@@ -174,9 +227,10 @@ export function JoinPage({ roomId }: JoinPageProps) {
               maxLength={20}
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+              onKeyDown={(e) => e.key === "Enter" && toPick()}
             />
-            <button className="btn-primary btn-large" onClick={handleJoin}>참여하기</button>
+            <p className="nick-hint">실명 말고 별명도 좋아요</p>
+            <button className="btn-primary btn-large" onClick={toPick}>다음 — 캐릭터 고르기</button>
             {joinError && <p className="error-msg">{joinError}</p>}
           </div>
         </div>
@@ -188,7 +242,10 @@ export function JoinPage({ roomId }: JoinPageProps) {
     <div className="join-page">
       <div className="audience-screen">
         <header className="audience-header">
-          <span className="audience-nickname">{displayName}</span>
+          <span className="audience-nickname">
+            {character && <img className="audience-char" src={characterById(character)?.file} alt="" />}
+            {displayName}
+          </span>
           <span className="audience-status">👥 {participantCount}명 · ● 연결됨</span>
         </header>
 

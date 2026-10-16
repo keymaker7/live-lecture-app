@@ -14,6 +14,7 @@ export default function RootLayout({
     <html lang="ko">
       <head>
         <link rel="stylesheet" href="/css/styles.css" />
+        <link rel="stylesheet" href="/css/plaza.css" />
       </head>
       <body>{children}</body>
     </html>

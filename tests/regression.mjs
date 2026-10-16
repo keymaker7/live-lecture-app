@@ -18,6 +18,10 @@ const env = Object.fromEntries(
 
 const results = [];
 const check = (name, pass, detail = "") => { results.push({ name, pass, detail }); console.log(`${pass ? "PASS" : "FAIL"} ${name}${detail ? " — " + detail : ""}`); };
+// 구글 슬라이드 iframe 이 내는 것(광고·로깅 차단, report-only CSP 보고)은 앱 오류가 아니라 뺀다.
+function isExternalNoise(t) {
+  return t.includes("ERR_BLOCKED_BY_CLIENT") || (t.includes("docs.google.com") && t.includes("report-only"));
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const tryWait = (p) => p.then(() => true).catch(() => false);
 
@@ -26,7 +30,7 @@ const hostCtx = await browser.newContext({ viewport: { width: 1600, height: 900 
 const host = await hostCtx.newPage();
 const errors = [];
 const watchErrors = (page, who) => {
-  page.on("console", (m) => { if (m.type() === "error" && !m.text().includes("ERR_BLOCKED_BY_CLIENT")) errors.push(`${who}: ${m.text().slice(0, 160)}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !isExternalNoise(m.text())) errors.push(`${who}: ${m.text().slice(0, 160)}`); });
   page.on("pageerror", (e) => errors.push(`${who} pageerror: ${String(e).slice(0, 160)}`));
 };
 watchErrors(host, "발표자");
@@ -62,19 +66,31 @@ await phone.goto(`${BASE}/join/${roomId}`);
 await phone.waitForSelector("#nickname");
 check("참가 화면 연수 제목", (await phone.textContent(".join-subtitle")) === "THOR 회귀시험");
 await phone.fill("#nickname", "회귀폰");
-await phone.click("button:has-text(\"참여하기\")");
+await phone.click("button:has-text('캐릭터 고르기')");
+const picker = await tryWait(phone.waitForSelector(".char-grid", { timeout: 5000 }));
+const cells = await phone.locator(".char-cell").count();
+check("캐릭터 고르기 화면(50종)", picker && cells === 50, `${cells}칸`);
+await phone.screenshot({ path: path.join(OUT, "regression-phone-picker.png") });
+await phone.click(".char-cell:has-text('펭귄')");
+await phone.click("button:has-text('참여하기')");
 const joined = await tryWait(phone.waitForSelector(".audience-screen", { timeout: 5000 }));
+check("폰 상단에 내 캐릭터", joined && ((await phone.getAttribute(".audience-char", "src")) || "").includes("a07_penguin"));
 await tryWait(host.waitForFunction(() => document.querySelector(".topbar-count")?.textContent?.includes("1"), null, { timeout: 8000 }));
-check("링크 참가 → 발표 화면 인원 1", joined && (await host.textContent(".topbar-count")) || "".includes("1"), (await host.textContent(".topbar-count")) || "");
+check("링크 참가 → 발표 화면 인원 1", joined && ((await host.textContent(".topbar-count")) || "").includes("1"), (await host.textContent(".topbar-count")) || "");
 await tryWait(phone.waitForFunction(() => document.querySelector(".audience-status")?.textContent?.includes("1명"), null, { timeout: 5000 }));
-check("폰 화면 인원 표시", (await phone.textContent(".audience-status")) || "".includes("1명"), (await phone.textContent(".audience-status")) || "");
+check("폰 화면 인원 표시", ((await phone.textContent(".audience-status")) || "").includes("1명"), (await phone.textContent(".audience-status")) || "");
+// 발표 화면: 알 → 금 간 알 → 펭귄 부화 + "새 친구" 알림
+const egg = await tryWait(host.waitForFunction(() => [...document.querySelectorAll(".pz-sprite")].some((i) => i.src.includes("e01_egg") || i.src.includes("e02_egg_crack")), null, { timeout: 3000 }));
+const hatched = await tryWait(host.waitForFunction(() => [...document.querySelectorAll(".pz-sprite")].some((i) => i.src.includes("a07_penguin")), null, { timeout: 5000 }));
+const notice = await tryWait(host.waitForSelector(".pz-notice:has-text('새 친구 회귀폰')", { timeout: 3000 }));
+check("발표 화면 알 → 펭귄 부화 + 알림", egg && hatched && notice, `알 ${egg} · 부화 ${hatched} · 알림 ${notice}`);
 
 // 4. 채팅
 await phone.fill(".chat-input-wrap input", "회귀 채팅 <b>굵게</b>");
 await phone.click(".btn-send");
-const bubble = await tryWait(host.waitForSelector(".chat-bubble .chat-message", { timeout: 6000 }));
-check("채팅 → 발표 화면 말풍선", bubble && (await host.textContent(".chat-bubble .chat-message")) === "회귀 채팅 <b>굵게</b>");
-check("채팅 글자 그대로(태그 해석 안 함)", (await host.locator(".chat-bubble b").count()) === 0);
+const bubble = await tryWait(host.waitForSelector(".pz-bubble", { timeout: 6000 }));
+check("채팅 → 캐릭터 머리 위 말풍선", bubble && (await host.textContent(".pz-bubble")) === "회귀 채팅 <b>굵게</b>");
+check("채팅 글자 그대로(태그 해석 안 함)", (await host.locator(".pz-bubble b").count()) === 0);
 await host.click(".chat-log-panel .activity-toggle");
 check("채팅 로그", (await host.locator(".chat-log-panel .activity-item").count()) >= 1);
 await host.click(".chat-log-panel .activity-toggle"); // 다시 접기
@@ -82,7 +98,8 @@ await host.click(".chat-log-panel .activity-toggle"); // 다시 접기
 // 5. 이모지 반응
 await phone.click(".emoji-btn >> nth=0");
 const floated = await tryWait(host.waitForSelector(".floating-emoji", { timeout: 6000 }));
-check("이모지 반응 → 떠오름", floated);
+const overHead = await tryWait(host.waitForSelector(".pz-float", { timeout: 3000 }));
+check("이모지 반응 → 떠오름(화면 아래 + 캐릭터 머리 위)", floated && overHead);
 await host.click(".emoji-log-panel .activity-toggle");
 check("이모지 로그", (await host.locator(".emoji-log-panel .activity-item").count()) >= 1);
 await host.click(".emoji-log-panel .activity-toggle"); // 다시 접기
@@ -110,7 +127,8 @@ await phone.click(".aud-tab:has-text('질문')");
 await phone.fill(".question-textarea", "회귀 질문입니다");
 await phone.click("button:has-text('질문 등록')");
 const alerted = await tryWait(host.waitForSelector(".question-alert-text:has-text('회귀 질문입니다')", { timeout: 6000 }));
-check("질문 → 발표 화면 알림", alerted);
+const askMark = await tryWait(host.waitForSelector(".pz-ask", { timeout: 3000 }));
+check("질문 → 발표 화면 알림 + 머리 위 ❓", alerted && askMark);
 await host.click(".dock-tab:has-text('질문')");
 await host.click(".btn-resolve");
 check("질문 답변 완료", await tryWait(host.waitForSelector(".q-done", { timeout: 3000 })));
@@ -150,6 +168,18 @@ await host.click(".video-close-btn");
 check("영상 닫기", await tryWait(host.waitForSelector(".video-overlay", { state: "detached", timeout: 4000 })));
 await host.click(".dock-panel .toggle-btn");
 check("영상 끄기 → 폰 영상 탭 사라짐", await tryWait(phone.waitForSelector(".aud-tab:has-text('영상')", { state: "detached", timeout: 6000 })));
+
+// 광장 보기 전환·띠 숨기기 — 띠를 숨기면 예전 말풍선 목록으로 채팅이 보인다
+await host.click(".pz-controls button:has-text('광장')");
+check("광장 보기", (await host.getAttribute(".pz-root", "data-mode")) === "plaza");
+await host.screenshot({ path: path.join(OUT, "regression-host-plaza.png") });
+await host.click(".pz-controls button:has-text('산책로')");
+await host.click(".pz-controls button:has-text('띠 숨기기')");
+check("띠 숨기기", (await host.getAttribute(".pz-root", "data-mode")) === "hidden");
+await phone.fill(".chat-input-wrap input", "띠 숨김 채팅");
+await phone.click(".btn-send");
+check("띠 숨김 때 채팅 = 예전 말풍선 목록", await tryWait(host.waitForSelector(".chat-bubble .chat-message:has-text('띠 숨김 채팅')", { timeout: 6000 })));
+await host.click(".pz-controls button:has-text('띠 보이기')");
 
 // 11. 다른 PC 에서 연수 열기(lecture_rooms) — 같은 연수가 열리고, 진행 중이라 보기 전용 안내
 const otherCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });

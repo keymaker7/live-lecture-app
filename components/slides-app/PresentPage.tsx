@@ -6,6 +6,11 @@ import Link from "next/link";
 import { useSlidesRealtime } from "@/hooks/useSlidesRealtime";
 import { getCachedRoom } from "@/lib/session-store-client";
 import type { ActiveVideo } from "@/hooks/useSlidesRealtime";
+import { PlazaStage } from "@/components/slides-app/PlazaStage";
+import { readText, writeText } from "@/lib/realtime/storage";
+
+type PlazaView = "walk" | "plaza";
+const pref = (key: string, fallback: string) => (typeof window === "undefined" ? fallback : readText(key) ?? fallback);
 
 interface RoomData {
   id: string;
@@ -62,12 +67,17 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [timerRemaining, setTimerRemaining] = useState(0);
   const [showTimerBadge, setShowTimerBadge] = useState(false);
   const [copyLabel, setCopyLabel] = useState("링크 복사");
+  // 광장 보기: 산책로(기본, 슬라이드 하단 띠) / 광장(전체 화면). 설정은 이 PC 에 기억.
+  const [plazaView, setPlazaView] = useState<PlazaView>(() => (pref("ll:view", "walk") === "plaza" ? "plaza" : "walk"));
+  const [bandHidden, setBandHidden] = useState(() => pref("ll:band", "on") === "off");
+  const [sfxOn, setSfxOn] = useState(() => pref("ll:sfx", "on") === "on");
+  const [musicOn, setMusicOn] = useState(() => pref("ll:mus", "off") === "on");
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvaContainerRef = useRef<HTMLDivElement>(null);
   const prevQCountRef = useRef(0);
 
-  const { on, emit, ready, setInitialState, hostStatus, takeover } = useSlidesRealtime(roomId, "presenter");
+  const { on, off, emit, ready, setInitialState, hostStatus, takeover } = useSlidesRealtime(roomId, "presenter");
 
   const emitRef = useRef(emit);
   useEffect(() => { emitRef.current = emit; }, [emit]);
@@ -257,7 +267,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
               >{r.emoji}</div>
             ))}
           </div>
-          {chatBubbles.length > 0 && (
+          {/* 채팅은 캐릭터 머리 위 말풍선으로 — 띠를 숨겼을 때만 예전 말풍선 목록 */}
+          {bandHidden && plazaView === "walk" && chatBubbles.length > 0 && (
             <div className="chat-stream">
               {chatBubbles.map((b) => (
                 <div key={b.id} className="chat-bubble">
@@ -503,6 +514,15 @@ export function PresentPage({ roomId }: PresentPageProps) {
         )}
       </div>
 
+      <PlazaStage
+        on={on}
+        off={off}
+        title={room.title}
+        mode={plazaView === "plaza" ? "plaza" : bandHidden ? "hidden" : "walk"}
+        sfx={sfxOn}
+        music={musicOn}
+      />
+
       {hostStatus === "standby" && (
         <div className="host-standby" role="alert">
           <p>이미 다른 창에서 이 연수를 진행 중입니다.</p>
@@ -516,6 +536,17 @@ export function PresentPage({ roomId }: PresentPageProps) {
         <span className="slide-type-badge">{slideTypeLabel}</span>
         <span className="topbar-count">👥 {participantCount}</span>
         {showTimerBadge && <span className="timer-badge">⏱️ {fmtTimer(timerSec)}</span>}
+        <div className="pz-controls">
+          <button className={plazaView === "walk" ? "on" : ""} onClick={() => { setPlazaView("walk"); writeText("ll:view", "walk"); }}>🚶 산책로</button>
+          <button className={plazaView === "plaza" ? "on" : ""} onClick={() => { setPlazaView("plaza"); writeText("ll:view", "plaza"); }}>🌳 광장</button>
+          {plazaView === "walk" && (
+            <button onClick={() => { const h = !bandHidden; setBandHidden(h); writeText("ll:band", h ? "off" : "on"); }}>
+              {bandHidden ? "띠 보이기" : "띠 숨기기"}
+            </button>
+          )}
+          <button className={sfxOn ? "on" : ""} onClick={() => { const v = !sfxOn; setSfxOn(v); writeText("ll:sfx", v ? "on" : "off"); }}>🔊 효과음</button>
+          <button className={musicOn ? "on" : ""} onClick={() => { const v = !musicOn; setMusicOn(v); writeText("ll:mus", v ? "on" : "off"); }}>🎵 음악</button>
+        </div>
         <div className="topbar-actions">
           <button className="btn-ghost" onClick={() => {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
