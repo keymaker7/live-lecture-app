@@ -1299,3 +1299,22 @@ body {
   .qr-code-wrap img { width: 130px; height: 130px; }
   .poll-overlay { max-width: 200px; right: 0.5rem; }
 }
+
+/* 발표자 탭이 둘일 때 — 뒤에 연 창은 보기 전용 */
+.host-standby {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  max-width: min(520px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.4rem;
+  text-align: center;
+  color: var(--text-dark);
+}
+.host-standby p { margin: 0 0 0.4rem; font-weight: 700; }
+.host-standby .host-standby-sub { font-weight: 400; font-size: 0.9rem; color: var(--text); margin-bottom: 0.8rem; }

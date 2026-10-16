@@ -1,0 +1,317 @@
+// P1 게이트 — 가짜 참가자 40명(node + supabase-js, 실제 Supabase) + 실제 발표자 화면(Playwright 크롬)
+// 사용: 서버를 먼저 띄운다(npm run build && npx next start --port 3030) → node tests/p1-load.mjs [roomId]
+// 결과: tests/out/p1-result.json, 콘솔 요약. 초당 메시지가 80건을 넘으면 그 자리에서 멈춘다(지시서 중단 조건 2).
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const { createClient } = await import(path.join(ROOT, "node_modules/@supabase/supabase-js/dist/index.mjs"));
+const PW = process.env.PW_CORE || "/Volumes/ssd/dev/trade-game/node_modules/playwright-core/index.mjs";
+const { chromium } = await import(PW);
+
+const BASE = process.env.BASE || "http://localhost:3030";
+const N = Number(process.env.N || 40);
+const ACTIVITY_SEC = Number(process.env.ACTIVITY_SEC || 60);
+const LIMIT_PER_SEC = 80;
+const OUT = path.join(ROOT, "tests/out");
+fs.mkdirSync(OUT, { recursive: true });
+
+const env = Object.fromEntries(
+  fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").trim().split("\n")
+    .filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).replace(/^"|"$/g, "")])
+);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const T0 = Date.now();
+const log = []; // [ms, who, dir, event]
+const mark = (who, dir, event) => log.push([Date.now(), who, dir, event]);
+const phases = [];
+const phase = (name) => { phases.push({ name, at: Date.now() }); console.log(`\n▶ ${name} (+${((Date.now() - T0) / 1000).toFixed(1)}s)`); };
+const results = [];
+const check = (name, pass, detail = "") => { results.push({ name, pass, detail }); console.log(`${pass ? "PASS" : "FAIL"} ${name}${detail ? " — " + detail : ""}`); };
+
+// ── 연수 준비 ──
+let roomId = process.argv[2];
+if (!roomId) {
+  const r = await fetch(`${BASE}/api/rooms`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ slideUrl: "https://docs.google.com/presentation/d/1EAYk18WDjIG-zp_0vLm3CsfQh_i8eXc67Jo2O9C6Vuc/edit", title: "THOR P1 부하시험" }),
+  });
+  roomId = (await r.json()).roomId;
+}
+console.log("room", roomId);
+
+// ── 가짜 폰 ──
+const NAMES = ["민수", "민수", "민수", "지우", "서연", "하준", "도윤", "서윤", "시우", "하은", "지호", "수아", "예준", "지아", "주원", "윤서", "건우", "채원", "우진", "지유",
+  "선우", "다은", "연우", "수빈", "유준", "예은", "정우", "소율", "승우", "예린", "지환", "하린", "현우", "가은", "준서", "서아", "도현", "아린", "은우", "나은"];
+
+class Phone {
+  constructor(i) {
+    this.i = i;
+    this.pid = crypto.randomUUID();
+    this.nick = NAMES[i % NAMES.length];
+    this.name = null; // 발표자가 돌려준 이름
+    this.acked = false;
+    this.ackAt = 0;
+    this.sent = { chats: 0, reactions: 0, questions: 0, votes: 0 };
+    this.poll = null;
+    this.voted = false;
+    this.connect();
+  }
+  connect() {
+    this.sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    this.pub = this.sb.channel(`slides-room:${roomId}`, { config: { broadcast: { self: false } } });
+    this.cmd = this.sb.channel(`slides-cmd:${roomId}`);
+    this.pub.on("broadcast", { event: "room-state" }, ({ payload }) => {
+      mark("phone", "recv", "room-state");
+      const mine = payload.acks?.find((a) => a.pid === this.pid);
+      if (mine?.ok) { this.acked = true; this.name = mine.nickname; this.ackAt = Date.now(); }
+      if (payload.poll !== undefined) this.poll = payload.poll?.active ? payload.poll : null;
+    });
+    this.pub.on("broadcast", { event: "host-rejoined" }, () => {
+      mark("phone", "recv", "host-rejoined");
+      if (!this.joinedOnce) return;
+      this.acked = false;
+      setTimeout(() => this.join(), Math.random() * 4000); // 훅과 같은 값(REJOIN_SPREAD_MS)
+    });
+    this.subscribed = new Promise((res) => this.pub.subscribe((s) => s === "SUBSCRIBED" && res()));
+  }
+  async send(event, payload, retries = 2) {
+    for (let a = 0; a <= retries; a++) {
+      mark("phone", "sent", event);
+      try { await this.cmd.httpSend(event, { pid: this.pid, nickname: this.name || this.nick, ...payload }); return true; }
+      catch { await sleep(500 * (a + 1) ** 2); }
+    }
+    return false;
+  }
+  async join() {
+    this.joinedOnce = true;
+    await this.send("join-room", {});
+    clearInterval(this.retry);
+    this.retry = setInterval(() => { if (this.acked) clearInterval(this.retry); else this.send("join-room", {}); }, 5000);
+  }
+  async chat(n) { if (await this.send("chat", { message: `안녕하세요 ${this.i}-${n}` }, 1)) this.sent.chats++; }
+  async react() { if (await this.send("reaction", { emoji: ["👍", "❤️", "😂", "👏", "🔥"][Math.floor(Math.random() * 5)] }, 1)) this.sent.reactions++; }
+  async question() { if (await this.send("submit-question", { text: `질문 있어요 ${this.i}` }, 3)) this.sent.questions++; }
+  async vote() {
+    if (!this.poll || this.voted) return;
+    this.voted = true;
+    if (await this.send("vote-poll", { pollId: this.poll.id, optionIndex: this.i % this.poll.options.length }, 3)) this.sent.votes++;
+  }
+  async reconnect() { // 폰 새로고침 흉내 — 같은 pid 로 다시 접속·입장
+    clearInterval(this.retry);
+    await this.sb.removeAllChannels();
+    this.acked = false;
+    this.connect();
+    await this.subscribed;
+    await this.join();
+  }
+  async close() { clearInterval(this.retry); await this.sb.removeAllChannels(); }
+}
+
+// ── 초당 메시지 감시 ──
+let stopReason = "";
+// 평균은 구간 전체로, 최고치는 "아무 1초 창"(미끄럼 창)으로 잰다 — 1초 칸 경계에 걸쳐 숨는 몰림까지 잡는다.
+const perSecond = (from, to) => {
+  const rows = log.filter(([t]) => t >= from && t < to).sort((a, b) => a[0] - b[0]);
+  const secs = Math.max(1, (to - from) / 1000);
+  let sent = 0, recv = 0;
+  for (const r of rows) r[2] === "sent" ? sent++ : recv++;
+  let peak = { sent: 0, recv: 0, total: 0, at: 0 };
+  let j = 0, ws = 0, wr = 0;
+  for (let i = 0; i < rows.length; i++) {
+    rows[i][2] === "sent" ? ws++ : wr++;
+    while (rows[i][0] - rows[j][0] >= 1000) { rows[j][2] === "sent" ? ws-- : wr--; j++; }
+    if (ws + wr > peak.total) peak = { sent: ws, recv: wr, total: ws + wr, at: +((rows[j][0] - from) / 1000).toFixed(1) };
+  }
+  return { secs: +secs.toFixed(1), sent, recv, avgSent: +(sent / secs).toFixed(1), avgRecv: +(recv / secs).toFixed(1), avgTotal: +((sent + recv) / secs).toFixed(1), peak };
+};
+let hostLogCursor = 0;
+const pullHostLog = async (page) => {
+  const rows = await page.evaluate((from) => (window.__llStats?.log || []).slice(from), hostLogCursor).catch(() => []);
+  hostLogCursor += rows.length;
+  for (const [t, dir, ev] of rows) log.push([t, "host", dir, ev]);
+};
+const watch = (getPages) => setInterval(async () => {
+  for (const p of getPages()) if (p && !p.isClosed()) await pullHostLog(p);
+  const now = Date.now();
+  const w = perSecond(now - 3000, now - 500).peak;
+  if (w.total > LIMIT_PER_SEC && !stopReason) {
+    stopReason = `초당 ${w.total}건(보냄 ${w.sent}·받음 ${w.recv}) — 한도 ${LIMIT_PER_SEC} 초과`;
+    console.log("⛔ " + stopReason);
+  }
+}, 1000);
+
+// ── 발표자 ──
+const browser = await chromium.launch({ channel: "chrome", headless: true });
+const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+await ctx.addInitScript(() => { try { localStorage.setItem("ll:debug", "1"); } catch {} });
+const host = await ctx.newPage();
+const consoleErrors = [];
+// 구글 슬라이드 iframe 안 광고·로깅 요청이 헤드리스 크롬에서 막히는 것(ERR_BLOCKED_BY_CLIENT)은 앱 오류가 아니라 뺀다.
+let ignoredErrors = 0;
+host.on("console", (m) => {
+  if (m.type() !== "error") return;
+  if (m.text().includes("ERR_BLOCKED_BY_CLIENT")) { ignoredErrors++; return; }
+  consoleErrors.push(m.text().slice(0, 200));
+});
+host.on("pageerror", (e) => consoleErrors.push("pageerror " + String(e).slice(0, 200)));
+let hostPages = [host];
+const watcher = watch(() => hostPages);
+
+const hostActive = async (page) => page.waitForFunction(() => (window.__llStats?.sent?.["host-rejoined"] || 0) >= 1, null, { timeout: 15000 });
+const snapshot = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "null"), `ll:host:${roomId}`);
+const topCount = (page) => page.evaluate(() => Number((document.querySelector(".topbar-count")?.textContent || "").replace(/\D/g, "")) || 0);
+
+phase("발표자 화면 열기");
+await host.goto(`${BASE}/presenter?room=${roomId}`);
+await hostActive(host);
+check("발표자 탭 진행(active) 상태", true);
+
+const phones = Array.from({ length: N }, (_, i) => new Phone(i));
+await Promise.all(phones.map((p) => p.subscribed));
+
+phase(`참가 ${N}명 (0.25초 간격)`);
+const joinStart = Date.now();
+for (const p of phones) { void p.join(); await sleep(250); }
+const joinDeadline = Date.now() + 20000;
+while (phones.some((p) => !p.acked) && Date.now() < joinDeadline) await sleep(200);
+const acked = phones.filter((p) => p.acked).length;
+check(`${N}명 참가 확인(ack)`, acked === N, `${acked}/${N}, 마지막 ack ${((Math.max(...phones.map((p) => p.ackAt)) - joinStart) / 1000).toFixed(1)}초`);
+const minsu = phones.filter((p) => p.nick === "민수").map((p) => p.name).sort();
+check("닉네임 중복 구분", JSON.stringify(minsu) === JSON.stringify(["민수", "민수(2)", "민수(3)"]), minsu.join(", "));
+await sleep(1500);
+check("발표 화면 인원", (await topCount(host)) === N, `${await topCount(host)}명`);
+
+phase("폰 1대 새로고침(같은 pid 재입장)");
+const before5 = phones[4].name;
+await phones[4].reconnect();
+const reDeadline = Date.now() + 10000;
+while (!phones[4].acked && Date.now() < reDeadline) await sleep(100);
+await sleep(1500);
+check("새로고침한 폰 = 같은 사람", phones[4].acked && phones[4].name === before5 && (await topCount(host)) === N, `${before5} → ${phones[4].name}, 인원 ${await topCount(host)}`);
+
+phase("투표 만들기");
+await host.click(".dock-toggle");
+await host.click(".dock-tab:has-text('투표')");
+await host.fill("input[placeholder='투표 질문']", "점심 메뉴는?");
+const opts = host.locator(".poll-opt");
+await opts.nth(0).fill("김밥");
+await opts.nth(1).fill("라면");
+await host.click("button:has-text('투표 시작')");
+const pollDeadline = Date.now() + 5000;
+while (phones.some((p) => !p.poll) && Date.now() < pollDeadline) await sleep(100);
+check("폰 전원 투표 받음", phones.every((p) => p.poll), `${phones.filter((p) => p.poll).length}/${N}`);
+
+phase(`활동 ${ACTIVITY_SEC}초 (채팅·반응 각 10초에 1번, 투표 1번, 질문 10명)`);
+const actStart = Date.now();
+const timers = [];
+for (const p of phones) {
+  const off1 = Math.random() * 10000, off2 = Math.random() * 10000;
+  let n = 0;
+  timers.push(setTimeout(() => { void p.chat(n++); timers.push(setInterval(() => { if (Date.now() - actStart < ACTIVITY_SEC * 1000) void p.chat(n++); }, 10000)); }, off1));
+  timers.push(setTimeout(() => { void p.react(); timers.push(setInterval(() => { if (Date.now() - actStart < ACTIVITY_SEC * 1000) void p.react(); }, 10000)); }, off2));
+  timers.push(setTimeout(() => void p.vote(), Math.random() * 15000));
+  if (p.i % 4 === 0) timers.push(setTimeout(() => void p.question(), Math.random() * 30000));
+}
+while (Date.now() - actStart < ACTIVITY_SEC * 1000 && !stopReason) await sleep(500);
+timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+await sleep(4000); // 마지막 전송 + 2초 저장
+const actEnd = Date.now() - 4000;
+
+phase("수신 누락 검사");
+const snap1 = await snapshot(host);
+const byPid = new Map((snap1?.participants || []).map((x) => [x.pid, x]));
+let missing = [];
+for (const p of phones) {
+  const h = byPid.get(p.pid);
+  for (const k of ["chats", "reactions", "questions", "votes"]) {
+    if (!h || h[k] !== p.sent[k]) missing.push(`${p.name || p.nick} ${k} 폰 ${p.sent[k]} / 발표자 ${h ? h[k] : "없음"}`);
+  }
+}
+const sentTotals = phones.reduce((a, p) => { for (const k in p.sent) a[k] = (a[k] || 0) + p.sent[k]; return a; }, {});
+check("발표자 수신 누락 0", missing.length === 0, missing.length ? missing.slice(0, 5).join(" | ") : `채팅 ${sentTotals.chats}·반응 ${sentTotals.reactions}·질문 ${sentTotals.questions}·투표 ${sentTotals.votes} 전부 수신`);
+const pollVotes = (snap1?.state?.poll?.options || []).reduce((a, o) => a + o.votes, 0);
+check("투표 집계 = 투표한 폰 수", pollVotes === sentTotals.votes, `${pollVotes}/${sentTotals.votes}`);
+check("질문 수", (snap1?.state?.questions || []).length === sentTotals.questions, `${(snap1?.state?.questions || []).length}`);
+
+phase("발표자 탭 새로고침");
+const reloadAt = Date.now();
+await host.reload();
+hostLogCursor = 0;
+await hostActive(host);
+const rejoinDeadline = Date.now() + 20000;
+while ((phones.some((p) => !p.acked) || (await topCount(host)) < N) && Date.now() < rejoinDeadline) await sleep(250);
+const rejoinSec = ((Date.now() - reloadAt) / 1000).toFixed(1);
+check(`새로고침 후 ${N}명 자동 재입장`, phones.every((p) => p.acked) && (await topCount(host)) === N, `${await topCount(host)}명, ${rejoinSec}초`);
+await sleep(3000);
+const snap2 = await snapshot(host);
+const keep = [];
+for (const a of snap1.participants) {
+  const b = snap2.participants.find((x) => x.pid === a.pid);
+  if (!b || ["nickname", "chats", "reactions", "questions", "votes"].some((k) => a[k] !== b[k])) keep.push(a.nickname);
+}
+check("새로고침 후 활동 점수·이름 유지", keep.length === 0 && snap2.participants.length === snap1.participants.length, keep.length ? keep.slice(0, 5).join(",") : `${snap2.participants.length}명 그대로`);
+check("새로고침 후 투표·질문 유지", JSON.stringify(snap2.state.poll) === JSON.stringify(snap1.state.poll) && snap2.state.questions.length === snap1.state.questions.length);
+const chatLogRows = await host.locator(".chat-log-panel .activity-item").count();
+check("새로고침 후 채팅 로그 복원", chatLogRows > 0, `${chatLogRows}줄`);
+const rejoinEnd = Date.now();
+
+phase("발표자 탭 2개 — 같은 PC");
+const tab2 = await ctx.newPage();
+hostPages.push(tab2);
+await tab2.goto(`${BASE}/presenter?room=${roomId}`);
+await tab2.waitForSelector(".host-standby", { timeout: 8000 }).catch(() => {});
+check("뒤에 연 탭 = 보기 전용 안내", await tab2.locator(".host-standby").isVisible(), "");
+check("앞 탭은 그대로 진행", !(await host.locator(".host-standby").isVisible()));
+const takeoverAt = Date.now();
+await tab2.click(".host-standby button");
+await tab2.waitForFunction(() => (window.__llStats?.sent?.["host-rejoined"] || 0) >= 1, null, { timeout: 8000 }).catch(() => {});
+await host.waitForSelector(".host-standby", { timeout: 5000 }).catch(() => {});
+check("[여기서 진행] → 넘겨받음", (await host.locator(".host-standby").isVisible()) && !(await tab2.locator(".host-standby").isVisible()));
+await sleep(3500); // 폰 재입장
+for (const p of phones) setTimeout(() => void p.chat(99), Math.random() * 8000); // 실제처럼 8초에 흩어서
+await sleep(11000);
+const snap3 = await snapshot(tab2);
+const after = snap3.participants.reduce((a, x) => a + x.chats, 0);
+const beforeChats = snap2.participants.reduce((a, x) => a + x.chats, 0);
+const takeoverEnd = Date.now();
+check("넘겨받은 탭이 이어서 수신(점수 유지)", after === beforeChats + N && (await topCount(tab2)) === N, `채팅 ${beforeChats} → ${after}, 인원 ${await topCount(tab2)}`);
+
+phase("발표자 탭 2개 — 다른 PC(다른 브라우저 프로필)");
+const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+const other = await ctx2.newPage();
+await other.goto(`${BASE}/presenter?room=${roomId}`);
+await other.waitForSelector(".host-standby", { timeout: 8000 }).catch(() => {});
+check("다른 PC 탭 = 보기 전용 안내(Presence)", await other.locator(".host-standby").isVisible());
+check("진행 탭은 그대로", !(await tab2.locator(".host-standby").isVisible()));
+
+clearInterval(watcher);
+for (const p of hostPages) if (!p.isClosed()) await pullHostLog(p);
+
+// ── 초당 메시지 ──
+const rates = {
+  join: perSecond(joinStart, joinStart + N * 250 + 3000),
+  activity: perSecond(actStart, actEnd),
+  hostReload: perSecond(reloadAt, rejoinEnd),
+  takeover: perSecond(takeoverAt, takeoverEnd),
+};
+const byEvent = {};
+for (const [t, who, dir, ev] of log) {
+  if (t < actStart || t >= actEnd) continue;
+  const k = `${who}.${dir}.${ev}`;
+  byEvent[k] = (byEvent[k] || 0) + 1;
+}
+console.log("\n초당 메시지 (보냄 = 폰 httpSend + 발표자 방송 / 받음 = 발표자 수신 + 폰 수신)");
+for (const [k, r] of Object.entries(rates)) console.log(`  ${k}: 평균 보냄 ${r.avgSent} · 받음 ${r.avgRecv} · 합 ${r.avgTotal}/초 | 최고 1초 ${r.peak.total}(보냄 ${r.peak.sent}·받음 ${r.peak.recv})`);
+console.log("  활동 구간 이벤트별:", byEvent);
+check("초당 메시지 80건 이하(모든 구간 최고치)", !stopReason && Object.values(rates).every((r) => r.peak.total <= LIMIT_PER_SEC), stopReason || Object.entries(rates).map(([k, r]) => `${k} 최고 ${r.peak.total}`).join(", "));
+check("발표 화면 콘솔 오류 0", consoleErrors.length === 0, consoleErrors.slice(0, 3).join(" | ") || `(슬라이드 iframe 차단 ${ignoredErrors}건 제외)`);
+
+fs.writeFileSync(path.join(OUT, "p1-result.json"), JSON.stringify({ roomId, n: N, results, rates, byEvent, phases: phases.map((p) => ({ ...p, t: (p.at - T0) / 1000 })), consoleErrors }, null, 2));
+await Promise.all(phones.map((p) => p.close()));
+await browser.close();
+const fails = results.filter((r) => !r.pass).length;
+console.log(`\n${results.length - fails}/${results.length} 통과`);
+process.exit(fails ? 1 : 0);

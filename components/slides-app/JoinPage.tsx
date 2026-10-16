@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSlidesRealtime } from "@/hooks/useSlidesRealtime";
+import { useState, useEffect, useRef } from "react";
+import { useSlidesRealtime, type AudienceState, type JoinAck } from "@/hooks/useSlidesRealtime";
+import { readText, writeText } from "@/lib/realtime/storage";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "👏", "🔥", "💡", "🎉"];
 
@@ -19,13 +20,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [participantCount, setParticipantCount] = useState(0);
   const [chatInput, setChatInput] = useState("");
   const [questionInput, setQuestionInput] = useState("");
-  const [poll, setPoll] = useState<{
-    id: string;
-    question: string;
-    options: Array<{ text: string; votes: number }>;
-    active: boolean;
-  } | null>(null);
+  const [poll, setPoll] = useState<AudienceState["poll"]>(null);
   const [voted, setVoted] = useState(false);
+  const pollIdRef = useRef("");
   const [myQuestions, setMyQuestions] = useState<string[]>([]);
   const [lastReactionAt, setLastReactionAt] = useState(0);
   const [sendLabel, setSendLabel] = useState("전송");
@@ -38,6 +35,14 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [videoSubmitLabel, setVideoSubmitLabel] = useState("영상 요청");
 
   const { on, emit, ready } = useSlidesRealtime(roomId, "audience");
+
+  // 같은 연수에 다시 들어올 때 쓰던 닉네임을 채워 둔다(참가자 ID 는 훅이 기억).
+  useEffect(() => {
+    const saved = readText(`ll:nick:${roomId}`);
+    // localStorage 는 브라우저에서만 읽혀 첫 렌더(서버)와 맞추려고 effect 에서 채운다
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved) setNickname(saved);
+  }, [roomId]);
 
   useEffect(() => {
     document.body.className = "join-page";
@@ -66,8 +71,16 @@ export function JoinPage({ roomId }: JoinPageProps) {
     if (!ready) return;
 
     on("room-state", (state) => {
-      const s = state as { poll?: typeof poll; participantCount?: number; videoChatEnabled?: boolean };
-      if (s.poll !== undefined) setPoll(s.poll?.active ? s.poll : null);
+      const s = state as Partial<AudienceState>;
+      if (s.poll !== undefined) {
+        const active = s.poll?.active ? s.poll : null;
+        // 새 투표가 열리면 다시 투표할 수 있게
+        if (active && active.id !== pollIdRef.current) {
+          pollIdRef.current = active.id;
+          setVoted(false);
+        }
+        setPoll(active);
+      }
       if (s.participantCount !== undefined) setParticipantCount(s.participantCount);
       if (s.videoChatEnabled !== undefined) {
         setVideoChatEnabled(s.videoChatEnabled);
@@ -75,6 +88,15 @@ export function JoinPage({ roomId }: JoinPageProps) {
       }
     });
     on("participant-count", (n) => setParticipantCount(n as number));
+    // 발표자가 겹치는 닉네임을 민수(2)처럼 바꿔 줄 수 있다 — 받은 이름으로 표시
+    on("join-ack", (res) => {
+      const ack = res as JoinAck;
+      if (ack.ok && ack.nickname) setDisplayName(ack.nickname);
+      else if (!ack.ok) {
+        setJoined(false);
+        setJoinError(ack.error || "참여하지 못했습니다.");
+      }
+    });
 
     return () => {};
   }, [ready, on]);
@@ -88,6 +110,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
     setJoinError("");
     setDisplayName(trimmed);
     setJoined(true);
+    writeText(`ll:nick:${roomId}`, trimmed);
     emit("join-room", { roomId, nickname: trimmed });
   };
 
@@ -117,7 +140,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
 
   const votePoll = (index: number) => {
     if (!poll?.active || voted) return;
-    emit("vote-poll", { optionIndex: index });
+    emit("vote-poll", { optionIndex: index, pollId: poll.id });
     setVoted(true);
   };
 

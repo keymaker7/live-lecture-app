@@ -67,7 +67,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const canvaContainerRef = useRef<HTMLDivElement>(null);
   const prevQCountRef = useRef(0);
 
-  const { on, emit, ready, setInitialState } = useSlidesRealtime(roomId, "presenter");
+  const { on, emit, ready, setInitialState, hostStatus, takeover } = useSlidesRealtime(roomId, "presenter");
 
   const emitRef = useRef(emit);
   useEffect(() => { emitRef.current = emit; }, [emit]);
@@ -119,6 +119,16 @@ export function PresentPage({ roomId }: PresentPageProps) {
   useEffect(() => {
     if (!ready || !room) return;
     emit("presenter-join", { roomId });
+
+    // 발표자 탭을 새로고침했을 때 — 저장해 둔 채팅·이모지 기록으로 로그 패널을 다시 채운다.
+    on("history", (data) => {
+      const h = data as {
+        chats: Array<{ nickname: string; message: string; timestamp: number }>;
+        reactions: Array<{ nickname: string; emoji: string; timestamp: number }>;
+      };
+      setActivityLog(h.chats.slice(-30).reverse().map((c) => ({ nickname: c.nickname, message: c.message, timestamp: c.timestamp })));
+      setEmojiLog(h.reactions.slice(-100).reverse().map((r) => ({ nickname: r.nickname, emoji: r.emoji, timestamp: r.timestamp })));
+    });
 
     on("reaction", (data) => {
       const r = data as { id: string; emoji: string; nickname: string };
@@ -492,6 +502,14 @@ export function PresentPage({ roomId }: PresentPageProps) {
           </div>
         )}
       </div>
+
+      {hostStatus === "standby" && (
+        <div className="host-standby" role="alert">
+          <p>이미 다른 창에서 이 연수를 진행 중입니다.</p>
+          <p className="host-standby-sub">이 창은 보기 전용입니다. 여기서 이어서 진행하려면 아래 버튼을 누르세요.</p>
+          <button className="btn-primary" onClick={() => { void takeover(); }}>여기서 진행</button>
+        </div>
+      )}
 
       <header className="present-topbar">
         <span className="present-title">{room.title}</span>
