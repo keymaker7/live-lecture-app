@@ -5,6 +5,8 @@ import { createRoom } from "@/lib/room-store";
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { slideUrl, title } = body;
+  // 발표자 비밀값의 해시(비밀값 자체는 브라우저 밖으로 안 나간다)
+  const hostKeyHash = typeof body.hostKeyHash === "string" && /^[0-9a-f]{64}$/.test(body.hostKeyHash) ? body.hostKeyHash : null;
   if (!slideUrl) {
     return NextResponse.json({ error: "슬라이드 URL이 필요합니다." }, { status: 400 });
   }
@@ -23,6 +25,7 @@ export async function POST(req: NextRequest) {
     embedUrl: parsed.embedUrl ?? null,
     canvaDesignId: parsed.designId ?? null,
     canvaViewUrl: parsed.viewUrl ?? null,
+    hostKeyHash,
     });
   } catch (e) {
     console.error("[rooms] 연수 만들기 실패", e);

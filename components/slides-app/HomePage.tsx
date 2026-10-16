@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { cacheRoom } from "@/lib/session-store-client";
+import { hostKeyHash, newHostKey, saveHostKey } from "@/lib/realtime/host-key";
 
 export function HomePage() {
   const router = useRouter();
@@ -45,16 +46,19 @@ export function HomePage() {
     setError("");
     setLoading(true);
     try {
+      // 발표자 비밀값 — 이 브라우저에만 두고, 서버·DB 에는 해시만 보낸다(게임 결과 저장·다른 PC 복원 자격)
+      const hk = newHostKey();
       const res = await fetch("/api/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slideUrl: input, title: title.trim() }),
+        body: JSON.stringify({ slideUrl: input, title: title.trim(), hostKeyHash: hostKeyHash(hk) }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "연수 생성에 실패했습니다.");
         return;
       }
+      saveHostKey(data.roomId, hk);
       cacheRoom(data.roomId, { ...data, title: title.trim() || "연수", slideUrl: input });
       router.push(`/presenter?room=${data.roomId}`);
     } catch {

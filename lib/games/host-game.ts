@@ -4,7 +4,7 @@
 import type { QuizQuestion } from "./quiz-parse";
 import {
   DEFAULT_RULES, LATE_GRACE_MS, acceptAnswer, acceptSteps, isLate, isRecCorrect, judgeRps, judgeSurvival,
-  finishTime, newStepBudget, randomHand, scoreQuestion, scoreRun, shortWinners, stepBatchMs, toHand,
+  finishTime, newStepBudget, randomHand, rankStandings, scoreQuestion, scoreRun, shortWinners, stepBatchMs, toHand,
   type AnswerRec, type Hand, type ScoreRules, type StepBudget,
 } from "./scoring";
 
@@ -56,6 +56,8 @@ export interface GameState {
   alive: string[] | null;
   jail: string[];
   winners: string[];
+  /** 이 게임에 쓴 점수 규칙(발표자가 바꿨으면) — 저장했다 되살려도 같은 규칙 */
+  rules?: ScoreRules;
   /** 마지막 판정 — 폰에 보여 줄 것 */
   reveal: { key: string; res: Record<string, [0 | 1, number]>; void: boolean } | null;
 
@@ -127,7 +129,7 @@ const RUN_RESULT_DELAY_MS = 2500;
 export class HostGame {
   constructor(public s: GameState, private deps: GameDeps) {}
 
-  private get rules() { return this.deps.rules ?? DEFAULT_RULES; }
+  private get rules() { return this.s.rules ?? this.deps.rules ?? DEFAULT_RULES; }
   private fx(e: GameEffect) { this.deps.onEffect?.(e); }
 
   private base(type: GameType, id: string, title: string): GameState {
@@ -490,13 +492,16 @@ export class HostGame {
     } else {
       for (const pid of s.players) this.give(pid, r.join);
     }
-    if (s.type === "quiz" && s.mode !== "survival") {
-      const best = Object.entries(s.points).sort((a, b) => b[1] - a[1]);
-      s.winners = best.length ? [best[0][0]] : [];
-    }
+    // 순서는 동점 규칙대로(점수 → 정답 수 → 평균 응답 시간 → 먼저 참가 = 이 게임에 먼저 들어온 순)
+    const ranked = rankStandings(Object.entries(s.points).map(([pid, points]) => {
+      const st = s.stats[pid] ?? { correct: 0, answered: 0, totalMs: 0 };
+      const at = s.players.indexOf(pid);
+      return { pid, points, correct: st.correct, answered: st.answered, totalMs: st.totalMs, joinedAt: at < 0 ? s.players.length : at };
+    }));
+    if (s.type === "quiz" && s.mode !== "survival") s.winners = ranked.length ? [ranked[0].pid] : [];
     s.phase = "finished";
     s.endedAt = this.deps.now();
-    const top = Object.entries(s.points).map(([pid, points]) => ({ pid, points })).sort((a, b) => b.points - a.points).slice(0, 10);
+    const top = ranked.slice(0, 10).map(({ pid, points }) => ({ pid, points }));
     this.fx({ t: "finish", winners: s.winners, top });
     return true;
   }

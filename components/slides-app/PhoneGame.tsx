@@ -10,6 +10,8 @@ interface PhoneGameProps {
   game: AudienceGame;
   pid: string;
   emit: (event: string, data?: unknown) => Promise<unknown> | void;
+  /** 종합 [총점, 순위, 오른 칸] — 게임이 끝나면 발표자가 보내 준다 */
+  rank?: [number, number, number] | null;
 }
 
 const MC_COLORS = ["#ff6b6b", "#4dabf7", "#f2b705", "#40c057"];
@@ -24,7 +26,7 @@ const buzz = (pattern: number | number[]) => {
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* 진동 없는 기기 */ }
 };
 
-export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
+export function PhoneGame({ game, pid, emit, rank }: PhoneGameProps) {
   const g = game;
   const qKey = g.type === "quiz" ? `${g.id}:${g.q?.no ?? 0}` : g.type === "rps" ? `${g.id}:${g.round ?? 0}` : g.id;
   // 문제(판)를 받은 순간 — 폰이 재는 응답 시간의 시작
@@ -129,6 +131,11 @@ export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
         <div className="pg-big">{won ? "🏆" : "🎉"}</div>
         <h2>{won ? "우승!" : "게임 끝!"}</h2>
         <p className="pg-points">이번 게임 +{pts}점</p>
+        {rank && (
+          <p className="pg-rank">
+            전체 {rank[1]}위{rank[2] > 0 ? ` (▲${rank[2]})` : rank[2] < 0 ? ` (▼${-rank[2]})` : ""} · 총 {rank[0]}점
+          </p>
+        )}
         <p className="pg-sub">발표 화면에서 결과를 확인하세요</p>
       </div>
     );

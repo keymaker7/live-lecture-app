@@ -36,6 +36,32 @@ export const DEFAULT_RULES: ScoreRules = {
   runFinish: 5,
 };
 
+/** 발표자가 게임 탭에서 바꾼 숫자 — 0~100 정수만, 빠진 칸은 기본값 */
+export function sanitizeRules(input: unknown): ScoreRules {
+  const src = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const n = (v: unknown, d: number) => {
+    const x = Math.round(Number(v));
+    return Number.isFinite(x) ? Math.max(0, Math.min(100, x)) : d;
+  };
+  const tri = (v: unknown, d: [number, number, number]): [number, number, number] => {
+    const a = Array.isArray(v) ? v : [];
+    return [n(a[0], d[0]), n(a[1], d[1]), n(a[2], d[2])];
+  };
+  const D = DEFAULT_RULES;
+  return {
+    join: n(src.join, D.join),
+    correct: n(src.correct, D.correct),
+    speedMax: n(src.speedMax, D.speedMax),
+    shortRank: tri(src.shortRank, D.shortRank),
+    surviveQuestion: n(src.surviveQuestion, D.surviveQuestion),
+    surviveWin: n(src.surviveWin, D.surviveWin),
+    rpsRound: n(src.rpsRound, D.rpsRound),
+    rpsWin: n(src.rpsWin, D.rpsWin),
+    runRank: tri(src.runRank, D.runRank),
+    runFinish: n(src.runFinish, D.runFinish),
+  };
+}
+
 /** 마감 뒤 이만큼까지는 들어온 답을 인정(전송 지연) — 넘으면 무효 */
 export const LATE_GRACE_MS = 1500;
 /** 단답은 문제당 3번까지 */

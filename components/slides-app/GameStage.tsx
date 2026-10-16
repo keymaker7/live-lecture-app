@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { GameLayout, GameZone } from "@/lib/plaza/engine";
-import type { GameEffect, GameState } from "@/lib/games/host-game";
+import type { GameEffect, GameState, QuestionLog } from "@/lib/games/host-game";
 import type { Participant } from "@/hooks/useSlidesRealtime";
 import { characterById, characterForNickname, TEACHER } from "@/lib/plaza/characters";
 import type { PlazaHandle } from "@/components/slides-app/PlazaStage";
@@ -60,7 +60,7 @@ export function GameStage({ on, off, emit, plaza }: GameStageProps) {
   const [view, setView] = useState<GameView | null>(null);
   const [stamp, setStamp] = useState<{ text: string; tone: string; id: number } | null>(null);
   const [rpsCount, setRpsCount] = useState("");
-  const [popup, setPopup] = useState<{ title: string; top: Array<{ pid: string; points: number }> } | null>(null);
+  const [popup, setPopup] = useState<{ title: string; top: Array<{ pid: string; points: number }>; rates?: QuestionLog[] } | null>(null);
   const [goalNote, setGoalNote] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const peopleRef = useRef(new Map<string, Person>());
@@ -206,7 +206,7 @@ export function GameStage({ on, off, emit, plaza }: GameStageProps) {
         case "finish": {
           const v = viewRef.current;
           later(400, () => {
-            setPopup({ title: v?.s.title ?? "게임", top: e.top });
+            setPopup({ title: v?.s.title ?? "게임", top: e.top, rates: v?.s.type === "quiz" ? v.s.log : undefined });
             later(8000, () => setPopup(null)); // 결과 화면은 8초
             snd?.play("win");
             [0, 900, 1800].forEach((ms) => later(ms, () => h?.confetti.burst()));
@@ -359,6 +359,21 @@ export function GameStage({ on, off, emit, plaza }: GameStageProps) {
               <ol className="gm-list" start={4}>
                 {popup.top.slice(3, 10).map((t) => <li key={t.pid}><span>{name(t.pid)}</span><b>+{t.points}점</b></li>)}
               </ol>
+            )}
+            {popup.rates && popup.rates.length > 0 && (
+              <div className="gm-rates">
+                <h3>문제별 정답률 — 어디서 많이 틀렸나</h3>
+                {popup.rates.map((l) => {
+                  const pct = l.answered ? Math.round((l.correct / l.answered) * 100) : 0;
+                  return (
+                    <div key={l.no} className={`gm-rate ${pct < 50 ? "low" : ""}`} title={l.text}>
+                      <span>Q{l.no}</span>
+                      <span className="gm-rate-bar"><i style={{ width: `${pct}%` }} /></span>
+                      <b>{l.void ? "무효" : `${pct}%`}</b>
+                    </div>
+                  );
+                })}
+              </div>
             )}
             <p className="gm-popup-hint">화면을 누르면 닫혀요 · [닫기]로 게임을 마쳐요</p>
           </div>

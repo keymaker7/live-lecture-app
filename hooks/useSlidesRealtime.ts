@@ -6,10 +6,20 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase-client";
 import { HostLock, type HostStatus } from "@/lib/realtime/host-lock";
 import { countMessage } from "@/lib/realtime/stats";
-import { hostTabId, readJSON, stablePid, writeJSON } from "@/lib/realtime/storage";
+import { bumpMyActivity, hostTabId, readJSON, stablePid, stableToken, writeJSON } from "@/lib/realtime/storage";
+import { sha256Hex } from "@/lib/realtime/sha256";
+import { loadHostKey } from "@/lib/realtime/host-key";
 import { resolveCharacter } from "@/lib/plaza/characters";
 import { HostGame, type AudienceGame, type GameEffect, type GameState } from "@/lib/games/host-game";
 import type { QuizQuestion } from "@/lib/games/quiz-parse";
+import { sanitizeRules } from "@/lib/games/scoring";
+import {
+  audienceRanks, computeStandings, fromResultPayloads, toResultPayload,
+  type AudienceRanks, type GameRecord, type Person, type Standing,
+} from "@/lib/games/records";
+import { loadResults, saveResult, type SaveOutcome } from "@/lib/games/results-db";
+
+export type { GameRecord, Standing } from "@/lib/games/records";
 
 // 통신 구조 (설계서 §2)
 //   slides-room:{roomId}  공용 — 발표자만 보낸다. 폰은 듣기만: room-state(묶어서 초당 최대 1회), host-rejoined
@@ -65,20 +75,8 @@ export interface Participant {
   games?: Record<string, number>;
   /** 퀴즈 누적: 정답 수·답한 수·응답 시간 합(동점 처리·CSV) */
   quiz?: { correct: number; answered: number; totalMs: number };
-}
-
-/** 끝난 게임 한 판 — 결과 화면·CSV·DB 저장(P4) 용 */
-export interface GameRecord {
-  id: string;
-  type: GameState["type"];
-  title: string;
-  mode?: GameState["mode"];
-  startedAt: number;
-  endedAt: number;
-  points: Record<string, number>;
-  winners: string[];
-  players: string[];
-  log: NonNullable<GameState["log"]>;
+  /** 참가 토큰의 해시 — 폰이 참가할 때 보낸다. 그 뒤 이 pid 로 온 명령은 토큰이 맞아야 받는다(사칭 방지, 설계서 §6-5) */
+  th?: string;
 }
 
 export interface JoinAck {
@@ -96,7 +94,16 @@ export interface AudienceState {
   videoChatEnabled: boolean;
   /** 진행 중(또는 막 끝난) 게임 — 없으면 null */
   game: AudienceGame | null;
+  /** 종합 순위 pid → [총점, 순위, 오른 칸] — 게임이 1판이라도 끝났을 때만(끝날 때만 바뀌어 방송이 늘지 않는다) */
+  ranks?: AudienceRanks;
   acks?: JoinAck[];
+}
+
+/** 게임 결과 DB 저장 상태 — 발표자 게임 탭에 한 줄로 */
+export interface ResultsDbStatus {
+  state: SaveOutcome | "idle";
+  unsaved: number;
+  restored?: number;
 }
 
 type ChatItem = { message: string; nickname: string; id: string; timestamp: number; pid?: string };
@@ -173,6 +180,10 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     role === "presenter" && typeof window !== "undefined" ? hostTabId(roomId) : uuidv4()
   );
   const [pid] = useState(() => (role === "audience" && typeof window !== "undefined" ? stablePid(roomId) : ""));
+  // 폰: 참가 토큰(이 폰만 아는 비밀값). 발표자: 결과 저장 비밀값(#hk= 링크로 왔으면 그걸 저장).
+  const [tok] = useState(() => (role === "audience" && typeof window !== "undefined" ? stableToken(roomId) : ""));
+  const [hostSecret] = useState(() => (role === "presenter" && typeof window !== "undefined" ? loadHostKey(roomId).hk : ""));
+  const tokRef = useRef(tok);
   const tabIdRef = useRef(tabId);
   const pidRef = useRef(pid);
   const publicRef = useRef<RealtimeChannel | null>(null);
@@ -191,6 +202,14 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
   const allPollsRef = useRef<Array<Record<string, unknown>>>([]);
   const gameRef = useRef<HostGame | null>(null);
   const gamesRef = useRef<GameRecord[]>([]);
+  const standingsRef = useRef<Standing[]>([]);
+  const ranksRef = useRef<AudienceRanks | null>(null);
+  /** 토큰을 한 번 확인한 pid → 그 토큰(매번 해시하지 않게) */
+  const tokOkRef = useRef(new Map<string, string>());
+  /** 아직 등록 안 된 pid 가 토큰을 붙여 보냈을 때 — 그 자리에서 등록하면서 해시를 묶는다 */
+  const bindTokRef = useRef<{ pid: string; tok: string } | null>(null);
+  const dbRef = useRef<ResultsDbStatus>({ state: "idle", unsaved: 0 });
+  const savingRef = useRef(false);
   const statusRef = useRef<HostStatus>("deciding");
   const lockRef = useRef<HostLock | null>(null);
   const bufferedRef = useRef<Array<[string, Record<string, unknown>]>>([]);
@@ -261,6 +280,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       participantCount: onlineCount(),
       videoChatEnabled: stateRef.current.videoChatEnabled,
       game: gameRef.current ? gameRef.current.audience() : null,
+      ...(ranksRef.current ? { ranks: ranksRef.current } : {}),
     };
   }, [onlineCount]);
 
@@ -379,6 +399,11 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       const nick = uniqueNickname(base, names);
       const now = Date.now();
       p = { pid, nickname: nick, character: resolveCharacter(null, nick), joinedAt: now, lastActive: now, online: true, chats: 0, reactions: 0, questions: 0, votes: 0 };
+      const b = bindTokRef.current;
+      if (b && b.pid === pid) {
+        p.th = sha256Hex(b.tok);
+        tokOkRef.current.set(pid, b.tok);
+      }
       participantsRef.current.set(pid, p);
       pendingAcksRef.current.push({ pid, ok: true, nickname: p.nickname, character: p.character });
       emitLocal("participant-joined", { participant: p, isNew: true });
@@ -407,6 +432,87 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     };
   }, []);
 
+  const people = useCallback((): Person[] =>
+    [...participantsRef.current.values()].map((p) => ({ pid: p.pid, nickname: p.nickname, character: p.character, joinedAt: p.joinedAt })), []);
+
+  /** 종합 순위 다시 계산 — 게임 기록이 바뀔 때만(끝남·복원). 폰에 보낼 순위도 이때만 바뀐다. */
+  const recomputeStandings = useCallback(() => {
+    const rows = computeStandings(people(), gamesRef.current);
+    standingsRef.current = rows;
+    ranksRef.current = gamesRef.current.length ? audienceRanks(rows) : null;
+    emitLocal("standings", rows);
+  }, [emitLocal, people]);
+
+  const setDb = useCallback((next: Partial<ResultsDbStatus>) => {
+    dbRef.current = { ...dbRef.current, ...next, unsaved: gamesRef.current.filter((g) => !g.saved).length };
+    emitLocal("results-db", { ...dbRef.current });
+  }, [emitLocal]);
+
+  /** 끝난 게임 중 DB 에 아직 안 간 것을 차례로 저장(통신이 끊겼던 것도 다음 기회에) */
+  const persistResults = useCallback(async () => {
+    if (savingRef.current || role !== "presenter" || !hostSecret) return;
+    savingRef.current = true;
+    try {
+      const map = new Map(people().map((p) => [p.pid, p]));
+      for (const rec of gamesRef.current) {
+        if (rec.saved) continue;
+        const out = await saveResult(roomId, hostSecret, toResultPayload(rec, map));
+        if (out === "saved") rec.saved = true;
+        setDb({ state: out });
+        if (out !== "saved") break; // 꺼짐·거절·통신 실패 — 다음 게임이 끝날 때 다시
+      }
+      saveNow();
+    } finally {
+      savingRef.current = false;
+    }
+  }, [hostSecret, people, role, roomId, saveNow, setDb]);
+
+  /** 기록 1판을 참가자 누적(점수·게임별·퀴즈 통계)에 더한다 — 게임이 끝날 때, DB 에서 복원할 때 */
+  const addToParticipants = useCallback((rec: GameRecord) => {
+    for (const [pid, pts] of Object.entries(rec.points)) {
+      const p = participantsRef.current.get(pid);
+      if (!p) continue;
+      p.score = (p.score ?? 0) + pts;
+      p.games = { ...(p.games ?? {}), [rec.id]: pts };
+    }
+    for (const [pid, st] of Object.entries(rec.stats ?? {})) {
+      const p = participantsRef.current.get(pid);
+      if (!p) continue;
+      const q = p.quiz ?? { correct: 0, answered: 0, totalMs: 0 };
+      p.quiz = { correct: q.correct + st.correct, answered: q.answered + st.answered, totalMs: q.totalMs + st.totalMs };
+    }
+  }, []);
+
+  /** 다른 PC(발표자 링크)나 기록을 잃은 브라우저 — DB 에 있는 끝난 게임으로 종합 순위를 되살린다 */
+  const restoreFromDb = useCallback(async () => {
+    if (role !== "presenter" || !hostSecret) return;
+    const rows = await loadResults(roomId, hostSecret);
+    if (!rows || statusRef.current !== "active") return;
+    const { games, people: dbPeople } = fromResultPayloads(rows);
+    const known = new Set(gamesRef.current.map((g) => g.id));
+    const inDb = new Set(games.map((g) => g.id));
+    gamesRef.current = gamesRef.current.map((g) => (inDb.has(g.id) && !g.saved ? { ...g, saved: true } : g));
+    const added = games.filter((g) => !known.has(g.id));
+    if (added.length) {
+      for (const person of dbPeople) {
+        if (participantsRef.current.has(person.pid)) continue;
+        participantsRef.current.set(person.pid, {
+          pid: person.pid, nickname: person.nickname, character: resolveCharacter(person.character, person.nickname),
+          joinedAt: person.joinedAt, lastActive: person.joinedAt, online: false,
+          chats: 0, reactions: 0, questions: 0, votes: 0,
+        });
+      }
+      for (const g of added) addToParticipants(g);
+      gamesRef.current = [...gamesRef.current, ...added].sort((a, b) => a.endedAt - b.endedAt);
+      recomputeStandings();
+      emitLocal("participants", [...participantsRef.current.values()].map((x) => ({ ...x })));
+      emitLocal("games", [...gamesRef.current]);
+      changed();
+    }
+    setDb({ state: "saved", restored: added.length });
+    void persistResults();
+  }, [addToParticipants, changed, emitLocal, hostSecret, persistResults, recomputeStandings, role, roomId, setDb]);
+
   /** 게임이 끝나면 한 번만: 참가자 누적 점수·게임별 점수·퀴즈 통계에 더하고 기록을 남긴다. */
   const recordIfFinished = useCallback(() => {
     const g = gameRef.current;
@@ -414,24 +520,16 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     const s = g.s;
     const rec: GameRecord = {
       id: s.id, type: s.type, title: s.title, mode: s.mode, startedAt: s.startedAt, endedAt: s.endedAt ?? Date.now(),
-      points: { ...s.points }, winners: [...s.winners], players: [...s.players], log: [...(s.log ?? [])],
+      points: { ...s.points }, winners: [...s.winners], players: [...s.players],
+      stats: JSON.parse(JSON.stringify(s.stats)), log: [...(s.log ?? [])], saved: false,
     };
     gamesRef.current.push(rec);
-    for (const [pid, pts] of Object.entries(s.points)) {
-      const p = participantsRef.current.get(pid);
-      if (!p) continue;
-      p.score = (p.score ?? 0) + pts;
-      p.games = { ...(p.games ?? {}), [s.id]: pts };
-    }
-    for (const [pid, st] of Object.entries(s.stats)) {
-      const p = participantsRef.current.get(pid);
-      if (!p) continue;
-      const q = p.quiz ?? { correct: 0, answered: 0, totalMs: 0 };
-      p.quiz = { correct: q.correct + st.correct, answered: q.answered + st.answered, totalMs: q.totalMs + st.totalMs };
-    }
+    addToParticipants(rec);
+    recomputeStandings();
     emitLocal("game-recorded", rec);
     emitLocal("participants", [...participantsRef.current.values()].map((x) => ({ ...x })));
-  }, [emitLocal]);
+    void persistResults();
+  }, [addToParticipants, emitLocal, persistResults, recomputeStandings]);
 
   const gameChanged = useCallback(() => {
     recordIfFinished();
@@ -503,13 +601,52 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       default:
         return;
     }
+    // 새 게임 — 발표자가 게임 탭에서 바꾼 점수 규칙(이 게임 상태에 같이 저장된다)
+    if (event.startsWith("game-start-") && gameRef.current && gameRef.current !== g) {
+      gameRef.current.s.rules = sanitizeRules(payload.rules);
+    }
     gameChanged();
   }, [gameChanged, onlineCount, participantFor, recordIfFinished]);
 
+  /**
+   * 폰에서 온 명령이 진짜 그 pid 의 폰에서 왔나(설계서 §6-5). 참가 때 받은 토큰 해시(th)가 있으면
+   * 이후 명령의 토큰(tok)이 맞아야 한다. 참가는 같은 해시여야 — 남의 pid 로 이름·캐릭터를 바꾸지 못하게.
+   * 토큰 없이 만들어진 예전 기록(업데이트 전 폰)은 처음 온 토큰으로 묶는다.
+   */
+  const authorize = useCallback((event: string, pid: string, payload: Record<string, unknown>): boolean => {
+    bindTokRef.current = null;
+    const p = participantsRef.current.get(pid);
+    if (event === "join-room") {
+      const th = str(payload.th, 64);
+      return !p?.th || th === p.th;
+    }
+    const tok = str(payload.tok, 64);
+    if (!p) {
+      if (tok) bindTokRef.current = { pid, tok };
+      return true;
+    }
+    if (!p.th) {
+      if (/^[0-9a-f]{32}$/.test(tok)) {
+        p.th = sha256Hex(tok);
+        tokOkRef.current.set(pid, tok);
+      }
+      return true;
+    }
+    if (!tok) return false;
+    if (tokOkRef.current.get(pid) === tok) return true;
+    if (sha256Hex(tok) !== p.th) return false;
+    tokOkRef.current.set(pid, tok);
+    return true;
+  }, []);
+
   const handleCommand = useCallback(
-    (event: string, payload: Record<string, unknown>) => {
+    (event: string, payload: Record<string, unknown>, fromPhone = false) => {
       const state = stateRef.current;
       const pid = str(payload.peerId ?? payload.pid, 64);
+      if (fromPhone && pid && !authorize(event, pid, payload)) {
+        countMessage("recv", "token-mismatch");
+        return;
+      }
 
       if (event === "join-room") {
         const nickname = str(payload.nickname, 20);
@@ -522,7 +659,9 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         const existing = participantsRef.current.get(pid);
         const others = [...participantsRef.current.values()].filter((x) => x.pid !== pid).map((x) => x.nickname);
         const now = Date.now();
+        const th = /^[0-9a-f]{64}$/.test(str(payload.th, 64)) ? str(payload.th, 64) : undefined;
         if (existing) {
+          if (!existing.th && th) existing.th = th;
           // 같은 폰이 다시 들어옴 — 이름을 바꾼 게 아니면 그대로(민수(2)는 민수(2)로)
           const sameBase = existing.nickname === nickname || existing.nickname.replace(/\(\d+\)$/, "") === nickname;
           if (!sameBase) existing.nickname = uniqueNickname(nickname, others);
@@ -534,7 +673,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
           participantsRef.current.set(pid, {
             pid, nickname: nick, character: resolveCharacter(payload.character, nick),
             joinedAt: now, lastActive: now, online: true,
-            chats: 0, reactions: 0, questions: 0, votes: 0,
+            chats: 0, reactions: 0, questions: 0, votes: 0, th,
           });
         }
         const p = participantsRef.current.get(pid)!;
@@ -685,14 +824,16 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       // ───── 게임 (설계서 §4) — 판정은 발표자 브라우저만 ─────
       if (event.startsWith("game-")) handleGame(event, payload, pid);
     },
-    [changed, emitLocal, getFocusBucket, participantFor, scheduleFlush, scheduleSave, touched, handleGame]
+    [authorize, changed, emitLocal, getFocusBucket, participantFor, scheduleFlush, scheduleSave, touched, handleGame]
   );
 
   // ───────────────────────── 참가자 ─────────────────────────
 
-  const audienceSend = useCallback(async (event: string, payload: Record<string, unknown>, retries = 2) => {
+  const audienceSend = useCallback(async (event: string, raw: Record<string, unknown>, retries = 2) => {
     const ch = cmdRef.current;
     if (!ch) return false;
+    // 참가 땐 토큰의 해시만, 그 뒤 모든 명령엔 토큰을 붙인다(발표자가 해시로 확인 — 남의 pid 사칭 방지)
+    const payload = event === "join-room" ? raw : { ...raw, tok: tokRef.current };
     for (let attempt = 0; attempt <= retries; attempt++) {
       countMessage("sent", event);
       try {
@@ -707,7 +848,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
   const sendJoin = useCallback(() => {
     if (!myNickRef.current) return;
-    void audienceSend("join-room", { pid: pidRef.current, nickname: myNickRef.current, character: myCharRef.current || undefined });
+    void audienceSend("join-room", { pid: pidRef.current, nickname: myNickRef.current, character: myCharRef.current || undefined, th: sha256Hex(tokRef.current) });
   }, [audienceSend]);
 
   const startJoinRetry = useCallback(() => {
@@ -746,10 +887,11 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
       const becomeActive = () => {
         restore();
+        recomputeStandings();
         lastAudienceJsonRef.current = "";
         const buffered = bufferedRef.current;
         bufferedRef.current = [];
-        buffered.forEach(([e, p]) => handleCommand(e, p));
+        buffered.forEach(([e, p]) => handleCommand(e, p, true));
         // 폰들에게 "발표자 돌아왔다" — 저장해 둔 pid·닉네임으로 다시 들어오고, 못 받은 표를 다시 보낸다.
         // 이것도 전원 방송 1회라, 다음 상태 방송은 1초 뒤로 민다(전원 방송은 초당 1회까지).
         countMessage("sent", "host-rejoined");
@@ -766,6 +908,8 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         emitLocal("participants", [...participantsRef.current.values()].map((x) => ({ ...x })));
         emitLocal("games", [...gamesRef.current]);
         emitLocal("game", gameView());
+        // 다른 PC 에서 발표자 링크로 열었으면 DB 에서 순위 복원, 못 보낸 결과는 다시 저장
+        void restoreFromDb();
       };
 
       // 게임 시계: 마감·카운트·골인 뒤 결과처럼 시간으로 넘어가는 것
@@ -791,7 +935,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
         cmdCh.on("broadcast", { event }, ({ payload }) => {
           countMessage("recv", event);
           const p = (payload || {}) as Record<string, unknown>;
-          if (statusRef.current === "active") handleCommand(event, p);
+          if (statusRef.current === "active") handleCommand(event, p, true);
           else if (statusRef.current === "deciding" && bufferedRef.current.length < 2000) bufferedRef.current.push([event, p]);
         });
       });
@@ -869,7 +1013,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
     const leave = () => {
       if (!myNickRef.current) return;
-      leaveBeacon(roomId, pid);
+      leaveBeacon(roomId, pid, tokRef.current);
     };
     window.addEventListener("pagehide", leave);
 
@@ -884,7 +1028,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       publicRef.current = null;
       cmdRef.current = null;
     };
-  }, [roomId, role, audienceSend, changed, emitLocal, fullState, gameChanged, gameView, handleCommand, restore, saveNow, sendJoin, startJoinRetry]);
+  }, [roomId, role, audienceSend, changed, emitLocal, fullState, gameChanged, gameView, handleCommand, recomputeStandings, restore, restoreFromDb, saveNow, sendJoin, startJoinRetry]);
 
   const emit = useCallback(
     async (event: string, data?: unknown, callback?: (res: unknown) => void) => {
@@ -902,6 +1046,8 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
           emitLocal("participants", [...participantsRef.current.values()].map((x) => ({ ...x })));
           emitLocal("games", [...gamesRef.current]);
           emitLocal("game", gameView());
+          emitLocal("standings", standingsRef.current);
+          emitLocal("results-db", { ...dbRef.current });
           return;
         }
         if (event === "get-session-data") {
@@ -934,6 +1080,9 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       if (event === "vote-poll") {
         lastVoteRef.current = { pollId: String(payload.pollId || ""), optionIndex: Number(payload.optionIndex) };
       }
+      // 폰 위쪽 Lv — 내가 보낸 활동을 폰이 직접 센다(발표자에게 물으면 방송이 늘어난다)
+      const actField = event === "chat" ? "chats" : event === "reaction" ? "reactions" : event === "submit-question" ? "questions" : event === "vote-poll" ? "votes" : null;
+      if (actField) emitLocal("my-activity", bumpMyActivity(roomId, actField));
       if (event === "game-answer" || event === "game-steps") {
         // seq 는 시각(ms) — 폰을 새로고침해도 늘 커진다
         const msg = { ...payload, pid, nickname: myNickRef.current, seq: Date.now() };
@@ -943,7 +1092,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       const important = event !== "chat" && event !== "reaction";
       await audienceSend(event, { ...payload, pid, nickname: myNickRef.current || payload.nickname }, important ? 3 : 1);
     },
-    [role, audienceSend, changed, emitLocal, gameView, handleCommand, off, on, sendJoin, sessionData, startJoinRetry]
+    [role, roomId, audienceSend, changed, emitLocal, gameView, handleCommand, off, on, sendJoin, sessionData, startJoinRetry]
   );
 
   const setInitialState = useCallback((state: Partial<RoomState>) => {
@@ -958,15 +1107,25 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     await lock.takeover(); // 넘겨받으면 becomeActive 가 앞 탭이 막 저장한 상태를 읽는다
   }, []);
 
+  /** 결과 내보내기(CSV)·순위판용 — 지금 기록 그대로 */
+  const getResults = useCallback(() => ({
+    standings: standingsRef.current,
+    games: [...gamesRef.current],
+    participants: [...participantsRef.current.values()].map((p) => ({ ...p })),
+  }), []);
+
   return {
     on, off, emit, ready, setInitialState,
     clientId: role === "audience" ? pid : tabId,
     hostStatus, takeover,
+    getResults,
+    /** 발표자 비밀값(🔑 발표자 링크 복사용) — 폰에선 빈 값 */
+    hostSecret,
   };
 }
 
 /** 창을 닫을 때 — fetch keepalive 로 퇴장 알림(실패해도 그만). */
-function leaveBeacon(roomId: string, pid: string) {
+function leaveBeacon(roomId: string, pid: string, tok: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return;
@@ -976,7 +1135,7 @@ function leaveBeacon(roomId: string, pid: string) {
       method: "POST",
       keepalive: true,
       headers: { apikey: key, "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: [{ topic: `slides-cmd:${roomId}`, event: "leave-room", payload: { pid }, private: false }] }),
+      body: JSON.stringify({ messages: [{ topic: `slides-cmd:${roomId}`, event: "leave-room", payload: { pid, tok }, private: false }] }),
     }).catch(() => {});
   } catch { /* 무시 */ }
 }

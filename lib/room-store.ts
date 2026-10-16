@@ -111,11 +111,12 @@ export async function createRoom(data: {
   embedUrl?: string | null;
   canvaDesignId?: string | null;
   canvaViewUrl?: string | null;
+  hostKeyHash?: string | null;
 }): Promise<Room> {
   const room = blankRoom({ ...data, id: uuidv4().replace(/-/g, "").slice(0, 8) });
   const client = getDb();
   if (client) {
-    const { error } = await client.rpc("create_lecture_room", {
+    const args = {
       p_id: room.id,
       p_title: room.title,
       p_slide_url: room.slideUrl,
@@ -123,7 +124,16 @@ export async function createRoom(data: {
       p_embed_url: room.embedUrl,
       p_canva_design_id: room.canvaDesignId,
       p_canva_view_url: room.canvaViewUrl,
-    });
+    };
+    // 게임 결과 저장이 켜져 있으면 발표자 비밀값 해시와 함께(v2). 꺼져 있거나 v2 가 아직 없으면 예전 함수 —
+    // 그 연수는 처음 결과를 저장할 때 발표자 탭이 claim_room_host 로 등록한다.
+    let done = false;
+    if (process.env.LL_RESULTS_DB === "1" && data.hostKeyHash) {
+      const r = await client.rpc("create_lecture_room_v2", { ...args, p_host_key_hash: data.hostKeyHash });
+      if (r.error) console.error("[rooms] v2 실패 — 예전 함수로 다시", r.error.message);
+      done = !r.error;
+    }
+    const error = done ? null : (await client.rpc("create_lecture_room", args)).error;
     // 저장이 안 되면 다른 컴퓨터에서 못 연다 — 조용히 넘기지 않고 실패로 돌려준다.
     if (error) throw new Error(`연수 저장 실패: ${error.message}`);
   }

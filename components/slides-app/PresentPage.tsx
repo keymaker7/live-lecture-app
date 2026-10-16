@@ -9,6 +9,8 @@ import type { ActiveVideo } from "@/hooks/useSlidesRealtime";
 import { PlazaStage, type PlazaHandle } from "@/components/slides-app/PlazaStage";
 import { GameStage, type GameView } from "@/components/slides-app/GameStage";
 import { GameDock } from "@/components/slides-app/GameDock";
+import { RankBoard } from "@/components/slides-app/RankBoard";
+import type { ResultsDbStatus, Standing } from "@/hooks/useSlidesRealtime";
 import { readText, writeText } from "@/lib/realtime/storage";
 
 type PlazaView = "walk" | "plaza";
@@ -94,7 +96,23 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const canvaContainerRef = useRef<HTMLDivElement>(null);
   const prevQCountRef = useRef(0);
 
-  const { on, off, emit, ready, setInitialState, hostStatus, takeover } = useSlidesRealtime(roomId, "presenter");
+  const { on, off, emit, ready, setInitialState, hostStatus, takeover, getResults, hostSecret } = useSlidesRealtime(roomId, "presenter");
+  // 종합 순위(게임이 끝날 때마다 다시 계산돼 온다)·DB 저장 상태
+  const [standings, setStandings] = useState<Standing[]>([]);
+  const [gamesCount, setGamesCount] = useState(0);
+  const [rankOpen, setRankOpen] = useState(false);
+  const [dbStatus, setDbStatus] = useState<ResultsDbStatus>({ state: "idle", unsaved: 0 });
+
+  const openRankBoard = () => {
+    setRankOpen(true);
+    const h = plazaRef.current;
+    // 순위판에 오른 1·2·3등은 그 뒤로 광장에서도 왕관·메달
+    h?.engine.setMedals(standings.filter((x) => x.points > 0).slice(0, 3).map((x) => x.pid));
+    if (gamesCount > 0) {
+      h?.sound.play("win");
+      [0, 700].forEach((ms) => setTimeout(() => h?.confetti.burst(), ms));
+    }
+  };
 
   const emitRef = useRef(emit);
   useEffect(() => { emitRef.current = emit; }, [emit]);
@@ -148,6 +166,11 @@ export function PresentPage({ roomId }: PresentPageProps) {
     emit("presenter-join", { roomId });
 
     on("game", (v) => setGameActive(!!v && !!(v as GameView).s));
+    on("standings", (rows) => {
+      setStandings(rows as Standing[]);
+      setGamesCount(getResults().games.length);
+    });
+    on("results-db", (d) => setDbStatus(d as ResultsDbStatus));
 
     // 발표자 탭을 새로고침했을 때 — 저장해 둔 채팅·이모지 기록으로 로그 패널을 다시 채운다.
     on("history", (data) => {
@@ -205,7 +228,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
       if (s.videoChatEnabled !== undefined) setVideoChatEnabled(s.videoChatEnabled);
       if (s.activeVideo !== undefined) setActiveVideo(s.activeVideo ?? null);
     });
-  }, [ready, room, roomId, emit, on]);
+  }, [ready, room, roomId, emit, on, getResults]);
 
   useEffect(() => {
     if (!room || room.slideType !== "canva" || !room.canvaDesignId) return;
@@ -509,7 +532,9 @@ export function PresentPage({ roomId }: PresentPageProps) {
               </div>
             )}
 
-            {dockTab === "game" && <GameDock emit={emit} gameActive={gameActive} />}
+            {dockTab === "game" && (
+              <GameDock emit={emit} gameActive={gameActive} roomId={roomId} hostSecret={hostSecret} getResults={getResults} dbStatus={dbStatus} />
+            )}
 
             {dockTab === "video" && (
               <div className="dock-panel active">
@@ -546,6 +571,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
         handleRef={plazaRef}
       />
       <GameStage on={on} off={off} emit={emit} plaza={plazaRef} />
+      {rankOpen && <RankBoard standings={standings} games={gamesCount} onClose={() => setRankOpen(false)} />}
 
       {hostStatus === "standby" && (
         <div className="host-standby" role="alert">
@@ -564,6 +590,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
           title={participantCount > 60 ? "60명까지 권장 — 넘으면 실시간 연결이 불안정할 수 있어요" : "60명까지 권장"}
         >👥 {participantCount}{participantCount > 60 ? " · 60명까지 권장" : ""}</span>
         {showTimerBadge && <span className="timer-badge">⏱️ {fmtTimer(timerSec)}</span>}
+        <button className="btn-ghost topbar-rank" onClick={() => (rankOpen ? setRankOpen(false) : openRankBoard())}>🏆 종합 순위</button>
         <div className="pz-controls">
           <button className={plazaView === "walk" ? "on" : ""} onClick={() => { setPlazaView("walk"); writeText("ll:view", "walk"); }}>🚶 산책로</button>
           <button className={plazaView === "plaza" ? "on" : ""} onClick={() => { setPlazaView("plaza"); writeText("ll:view", "plaza"); }}>🌳 광장</button>

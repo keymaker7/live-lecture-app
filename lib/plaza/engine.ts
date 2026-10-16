@@ -98,6 +98,8 @@ function haloClass(level: number) {
 
 export class PlazaEngine {
   private actors = new Map<string, Actor>();
+  /** 종합 순위 1·2·3등 — 순위판을 연 뒤로 광장에서도 왕관·메달 (pid → 1|2|3) */
+  private medals = new Map<string, number>();
   private mode: PlazaMode = "walk";
   private W = 0;
   private H = 0;
@@ -409,6 +411,25 @@ export class PlazaEngine {
     el.classList.add("pz-zone-win");
   }
 
+  /** 종합 순위 1·2·3등에게 왕관·은·동 메달(머리 위). 빈 배열이면 다 뗀다. */
+  setMedals(top3: string[]) {
+    const next = new Map(top3.slice(0, 3).map((pid, i) => [pid, i + 1]));
+    for (const [pid, a] of this.actors) {
+      const want = next.get(pid) ?? 0;
+      if ((this.medals.get(pid) ?? 0) === want) continue;
+      a.body.querySelector(".pz-medal")?.remove();
+      if (want) this.putMedal(a.body, want);
+    }
+    this.medals = next;
+  }
+
+  private putMedal(body: HTMLDivElement, rank: number) {
+    const m = document.createElement("span");
+    m.className = `pz-medal r${rank}`;
+    m.textContent = ["👑", "🥈", "🥉"][rank - 1];
+    body.appendChild(m);
+  }
+
   /** 머리 위 표시(✓, O, 손 모양 등) */
   badge(pid: string, text: string) {
     const a = this.actors.get(pid);
@@ -457,6 +478,8 @@ export class PlazaEngine {
     name.append(zzz, lv, nick);
     el.append(body, name);
     this.root.appendChild(el);
+    const medal = this.medals.get(m.pid);
+    if (medal) this.putMedal(body, medal);
 
     const a: Actor = {
       m: { ...m }, info, el, body, img, halo, name, lv, zzz,

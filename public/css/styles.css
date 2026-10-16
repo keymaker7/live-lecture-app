@@ -1392,3 +1392,6 @@ body {
 .pg-run.off { background: #ced4da; box-shadow: 0 10px 0 #868e96; }
 .pg-progress { width: 86%; height: 16px; border-radius: 999px; background: #e9ecef; overflow: hidden; }
 .pg-progress div { height: 100%; background: linear-gradient(90deg, #ffd84d, #ff922b); transition: width 0.15s; }
+/* P4 폰 위쪽 Lv · 점수 · 순위, 게임 끝 순위 */
+.audience-rank { margin-right: 8px; color: #7048e8; font-weight: 800; }
+.pg-rank { font-size: 1.15rem; font-weight: 800; color: #7048e8; margin-top: 4px; }

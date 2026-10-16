@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSlidesRealtime, type AudienceState, type JoinAck } from "@/hooks/useSlidesRealtime";
-import { readText, writeText } from "@/lib/realtime/storage";
-import { ANIMALS, characterById, characterForNickname } from "@/lib/plaza/characters";
+import { readMyActivity, readText, writeText, type MyActivity } from "@/lib/realtime/storage";
+import { ANIMALS, activityLevel, characterById, characterForNickname } from "@/lib/plaza/characters";
 import { PhoneGame } from "@/components/slides-app/PhoneGame";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "👏", "🔥", "💡", "🎉"];
@@ -29,6 +29,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [voted, setVoted] = useState(false);
   const pollIdRef = useRef("");
   const [game, setGame] = useState<AudienceState["game"]>(null);
+  // 위쪽 "Lv · 점수 · 순위" — 점수·순위는 게임이 끝날 때 발표자가 보내 주고, Lv 는 폰이 직접 센 내 활동으로
+  const [myRank, setMyRank] = useState<[number, number, number] | null>(null);
+  const [myLevel, setMyLevel] = useState(() => (typeof window === "undefined" ? 1 : activityLevel(readMyActivity(roomId))));
   const [myQuestions, setMyQuestions] = useState<string[]>([]);
   const [lastReactionAt, setLastReactionAt] = useState(0);
   const [sendLabel, setSendLabel] = useState("전송");
@@ -78,9 +81,12 @@ export function JoinPage({ roomId }: JoinPageProps) {
   useEffect(() => {
     if (!ready) return;
 
+    on("my-activity", (a) => setMyLevel(activityLevel(a as MyActivity)));
     on("room-state", (state) => {
       const s = state as Partial<AudienceState>;
       if (s.game !== undefined) setGame(s.game);
+      const mine = s.ranks?.[clientId];
+      if (mine) setMyRank(mine);
       if (s.poll !== undefined) {
         const active = s.poll?.active ? s.poll : null;
         // 새 투표가 열리면 다시 투표할 수 있게
@@ -109,7 +115,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
     });
 
     return () => {};
-  }, [ready, on]);
+  }, [ready, on, clientId]);
 
   const toPick = () => {
     if (!nickname.trim()) {
@@ -249,11 +255,14 @@ export function JoinPage({ roomId }: JoinPageProps) {
             {character && <img className="audience-char" src={characterById(character)?.file} alt="" />}
             {displayName}
           </span>
-          <span className="audience-status">👥 {participantCount}명 · ● 연결됨</span>
+          <span className="audience-status">
+            {myRank ? <b className="audience-rank">Lv.{myLevel} · {myRank[0]}점 · {myRank[1]}위</b> : <b className="audience-rank">Lv.{myLevel}</b>}
+            👥 {participantCount}명 · ● 연결됨
+          </span>
         </header>
 
         {/* 게임 중에는 큰 버튼 화면만 */}
-        {game && <PhoneGame game={game} pid={clientId} emit={emit} />}
+        {game && <PhoneGame game={game} pid={clientId} emit={emit} rank={myRank} />}
 
         {!game && poll?.active && (
           <div className="poll-vote-panel">
