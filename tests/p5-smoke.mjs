@@ -103,6 +103,29 @@ check("🏆 종합 순위판: 참가 2명 · 게임 1판, 1위 하나", meta ===
 await shot(host, "rank-board");
 check("콘솔 오류 0", errors.length === 0, errors.slice(0, 4).join(" | "));
 
+// 5. 캔바 연수(시험용 주소는 환경 변수 CANVA_URL 로만) — 공유 열쇠가 든 퍼가기 주소로 뜨나.
+// 따로 창에서: 캔바 안쪽 사용 통계 호출(/_ajax/ae/)은 캔바 공식 퍼가기 코드로도 403 이라 콘솔 검사에서 뺀다(응답으로 따로 셈).
+if (process.env.CANVA_URL) {
+  const cctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+  const cpage = await cctx.newPage();
+  await unlock(cpage);
+  const token = process.env.CANVA_URL.match(/design\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+)/)?.[1] || "";
+  const made2 = await cpage.evaluate(async (u) => (await fetch("/api/rooms", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slideUrl: u, title: "THOR 캔바 스모크" }) })).json(), process.env.CANVA_URL);
+  const fails = [];
+  let docStatus = 0;
+  cpage.on("response", (r) => {
+    if (/canva\.com\/design\/.+\/view\?embed/.test(r.url()) && r.request().resourceType() === "document") docStatus = r.status();
+    if (r.status() >= 400 && /canva\.com/.test(r.url()) && !/\/_ajax\/ae\//.test(r.url())) fails.push(`${r.status()} ${r.url().split("?")[0].replace(token, "<열쇠>").slice(0, 80)}`);
+  });
+  await cpage.goto(`${BASE}/presenter?room=${made2.roomId}`);
+  const ok = await tryWait(cpage.waitForSelector("iframe.canva-frame", { timeout: 15000 }));
+  const src = ok ? await cpage.getAttribute("iframe.canva-frame", "src") : "";
+  await sleep(6000);
+  await shot(cpage, "canva");
+  check("캔바 연수: 열쇠 든 퍼가기 주소 iframe · 문서 200 · 그 밖 4xx 0", ok && src.includes(`/${token}/view?embed`) && docStatus === 200 && fails.length === 0, `문서 ${docStatus} · 4xx ${fails.length} ${fails.join(" | ")}`);
+}
+
+
 fs.writeFileSync(path.join(OUT, "p5-smoke.json"), JSON.stringify({ base: BASE, roomId, joinUrl, results, errors }, null, 2));
 await browser.close();
 const fails = results.filter((x) => !x.pass).length;
