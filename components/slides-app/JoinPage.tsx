@@ -31,7 +31,9 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [sendLabel, setSendLabel] = useState("전송");
   const [videoChatEnabled, setVideoChatEnabled] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
+  const [videoStartMin, setVideoStartMin] = useState("");
   const [videoStart, setVideoStart] = useState("");
+  const [videoEndMin, setVideoEndMin] = useState("");
   const [videoEnd, setVideoEnd] = useState("");
   const [videoSubmitLabel, setVideoSubmitLabel] = useState("영상 요청");
 
@@ -121,11 +123,13 @@ export function JoinPage({ roomId }: JoinPageProps) {
 
   const submitVideoRequest = () => {
     if (!joined || !videoUrl.trim()) return;
-    const start = parseInt(videoStart) || 0;
-    const end = parseInt(videoEnd) || 0;
+    const start = (parseInt(videoStartMin) || 0) * 60 + (parseInt(videoStart) || 0);
+    const end = (parseInt(videoEndMin) || 0) * 60 + (parseInt(videoEnd) || 0);
     emit("video-request", { url: videoUrl.trim(), start, end, nickname: displayName });
     setVideoUrl("");
+    setVideoStartMin("");
     setVideoStart("");
+    setVideoEndMin("");
     setVideoEnd("");
     setVideoSubmitLabel("요청 완료!");
     setTimeout(() => setVideoSubmitLabel("영상 요청"), 2000);
@@ -225,23 +229,47 @@ export function JoinPage({ roomId }: JoinPageProps) {
                   onChange={(e) => setVideoUrl(e.target.value)}
                 />
                 <div className="video-time-inputs">
-                  <input
-                    type="number"
-                    className="video-time-input"
-                    placeholder="시작(초)"
-                    min={0}
-                    value={videoStart}
-                    onChange={(e) => setVideoStart(e.target.value)}
-                  />
+                  <span className="video-time-group">
+                    <input
+                      type="number"
+                      className="video-time-input"
+                      placeholder="분"
+                      min={0}
+                      value={videoStartMin}
+                      onChange={(e) => setVideoStartMin(e.target.value)}
+                    />
+                    <span className="video-time-colon">:</span>
+                    <input
+                      type="number"
+                      className="video-time-input"
+                      placeholder="초"
+                      min={0}
+                      max={59}
+                      value={videoStart}
+                      onChange={(e) => setVideoStart(e.target.value)}
+                    />
+                  </span>
                   <span className="video-time-sep">~</span>
-                  <input
-                    type="number"
-                    className="video-time-input"
-                    placeholder="끝(초)"
-                    min={0}
-                    value={videoEnd}
-                    onChange={(e) => setVideoEnd(e.target.value)}
-                  />
+                  <span className="video-time-group">
+                    <input
+                      type="number"
+                      className="video-time-input"
+                      placeholder="분"
+                      min={0}
+                      value={videoEndMin}
+                      onChange={(e) => setVideoEndMin(e.target.value)}
+                    />
+                    <span className="video-time-colon">:</span>
+                    <input
+                      type="number"
+                      className="video-time-input"
+                      placeholder="초"
+                      min={0}
+                      max={59}
+                      value={videoEnd}
+                      onChange={(e) => setVideoEnd(e.target.value)}
+                    />
+                  </span>
                 </div>
                 <button className="btn-primary btn-full" onClick={submitVideoRequest}>{videoSubmitLabel}</button>
               </div>

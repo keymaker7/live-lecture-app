@@ -1250,6 +1250,14 @@ body {
 }
 .video-time-input:focus { border-color: var(--accent); }
 .video-time-sep { color: var(--text-muted); flex-shrink: 0; }
+.video-time-group {
+  flex: 1;
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  min-width: 0;
+}
+.video-time-colon { color: var(--text-muted); flex-shrink: 0; font-weight: 700; }
 
 /* ── Question alert toast ── */
 .question-alert {
