@@ -4,7 +4,7 @@
 import type { QuizQuestion } from "./quiz-parse";
 import {
   DEFAULT_RULES, LATE_GRACE_MS, acceptAnswer, acceptSteps, isLate, isRecCorrect, judgeRps, judgeSurvival,
-  newStepBudget, randomHand, scoreQuestion, scoreRun, shortWinners, stepBatchMs, toHand,
+  finishTime, newStepBudget, randomHand, scoreQuestion, scoreRun, shortWinners, stepBatchMs, toHand,
   type AnswerRec, type Hand, type ScoreRules, type StepBudget,
 } from "./scoring";
 
@@ -33,6 +33,8 @@ export interface QuestionLog {
 export interface RunnerState {
   steps: number;
   finishedAt: number | null;
+  /** GO 부터 골인까지(ms, 폰이 잰 값을 검사해서) — 등수 기준 */
+  finishMs?: number | null;
   lane: number;
   budget: StepBudget;
   seq: number;
@@ -416,8 +418,15 @@ export class HostGame {
     this.fx({ t: "step", pid, steps: r.steps });
     if (r.steps >= s.goal!) {
       r.finishedAt = receivedAt;
-      s.finishOrder = [...(s.finishOrder ?? []), pid];
-      this.fx({ t: "goal", pid, rank: s.finishOrder.length });
+      r.finishMs = finishTime(s.goal!, payload.finishMs, receivedAt - s.goAt);
+      // 골인 시간 순으로 끼워 넣는다(먼저 들어온 묶음이 늘 먼저 골인한 건 아니다)
+      const order = [...(s.finishOrder ?? [])];
+      const t = r.finishMs;
+      let at = order.findIndex((other) => (s.runners![other].finishMs ?? Number.POSITIVE_INFINITY) > t);
+      if (at < 0) at = order.length;
+      order.splice(at, 0, pid);
+      s.finishOrder = order;
+      this.fx({ t: "goal", pid, rank: at + 1 });
     }
     return ok;
   }
@@ -426,7 +435,7 @@ export class HostGame {
   runBoard(n = 5): Array<{ pid: string; steps: number }> {
     const rs = Object.entries(this.s.runners ?? {});
     return rs
-      .map(([pid, r]) => ({ pid, steps: r.steps, fin: r.finishedAt ?? Number.POSITIVE_INFINITY }))
+      .map(([pid, r]) => ({ pid, steps: r.steps, fin: r.finishMs ?? Number.POSITIVE_INFINITY }))
       .sort((a, b) => b.steps - a.steps || a.fin - b.fin)
       .slice(0, n)
       .map(({ pid, steps }) => ({ pid, steps }));
@@ -475,7 +484,7 @@ export class HostGame {
       for (const pid of s.winners) this.give(pid, r.rpsWin);
     }
     if (s.type === "run") {
-      const runners = Object.entries(s.runners ?? {}).map(([pid, x]) => ({ pid, steps: x.steps, finishedAt: x.finishedAt }));
+      const runners = Object.entries(s.runners ?? {}).map(([pid, x]) => ({ pid, steps: x.steps, finishedAt: x.finishedAt, finishMs: x.finishMs }));
       for (const [pid, pts] of scoreRun(runners, s.goal!, r)) this.give(pid, pts);
       s.winners = (s.finishOrder ?? []).slice(0, 1);
     } else {

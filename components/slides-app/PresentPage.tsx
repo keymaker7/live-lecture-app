@@ -77,6 +77,18 @@ export function PresentPage({ roomId }: PresentPageProps) {
   // 게임 중이면 광장(게임 화면)으로 자동 전환, 닫으면 원래 보기로
   const [gameActive, setGameActive] = useState(false);
   const plazaRef = useRef<PlazaHandle | null>(null);
+  // 게임 중엔 QR 패널이 오른쪽 답 구역을 가린다 — 시작 때 접고, 끝나면 원래대로
+  const qrBeforeGameRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (gameActive) {
+      if (qrBeforeGameRef.current === null) {
+        setQrCollapsed((c) => { qrBeforeGameRef.current = c; return true; });
+      }
+    } else if (qrBeforeGameRef.current !== null) {
+      setQrCollapsed(qrBeforeGameRef.current);
+      qrBeforeGameRef.current = null;
+    }
+  }, [gameActive]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvaContainerRef = useRef<HTMLDivElement>(null);

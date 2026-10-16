@@ -82,7 +82,9 @@ const SLEEP_MS = 5 * 60 * 1000;
 const JUMP_MS = 450;
 const NOTICE_MAX = 3;
 const NOTICE_MS = 3600;
-const DT_MAX = 0.034;
+// 프레임 사이 최대 시간 — 탭을 다녀와도 순간이동하지 않을 만큼만 자른다.
+// 너무 작으면 프레임이 느린 PC(초당 15~30)에서 걷기가 그만큼 느려진다(0.034 일 때 15fps 에서 절반 속도).
+const DT_MAX = 0.1;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -295,6 +297,7 @@ export class PlazaEngine {
       const add = (z: GameZone, cls: string) => {
         const el = document.createElement("div");
         el.className = cls;
+        el.dataset.key = z.key;
         el.style.left = `${z.x0 * 100}%`;
         el.style.width = `${(z.x1 - z.x0) * 100}%`;
         el.style.top = `${z.y0 * 100}%`;
@@ -429,6 +432,7 @@ export class PlazaEngine {
     const info = characterById(m.character) ?? characterForNickname(m.nickname);
     const el = document.createElement("div");
     el.className = "pz-ch";
+    el.dataset.pid = m.pid;
     const body = document.createElement("div");
     body.className = "pz-body";
     const halo = document.createElement("div");
@@ -685,7 +689,8 @@ export class PlazaEngine {
         const dx = a.tx - a.x;
         const dy = a.ty - a.y;
         const dist = Math.hypot(dx, dy);
-        const step = a.speed * (a.rush ? 5 : 1) * dt;
+        // 게임 답 구역으로 갈 때는 화면 폭의 60%/초 — 어느 구역이든 2초 안에 도착(평소 걸음은 그대로)
+        const step = (a.rush ? Math.max(a.speed * 5, this.W * 0.6) : a.speed) * dt;
         if (dist <= step) {
           a.x = a.tx;
           a.y = a.ty;

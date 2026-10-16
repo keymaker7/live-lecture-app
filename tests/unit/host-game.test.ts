@@ -198,6 +198,32 @@ describe("달리기", () => {
     expect(g.s.winners).toEqual(["a"]);
   });
 
+  it("60명(3초 묶음): 먼저 골인한 사람이 늦게 도착해도 등수는 골인 시간 순, 골인 효과도 그 등수", () => {
+    const c = clock();
+    const fx: GameEffect[] = [];
+    const g = HostGame.run({ now: c.now, rng: () => 0, onEffect: (e) => fx.push(e) }, "g1", 20, 60, 60);
+    expect(g.s.batchMs).toBe(3000);
+    g.runStart();
+    g.markBroadcast(c.now());
+    const go = g.s.goAt!;
+    c.set(go);
+    g.tick(c.now());
+    // b 가 먼저 골인(2.0초)했지만 b 의 마지막 묶음이 a(2.4초 골인)보다 늦게 도착
+    g.steps("a", { gid: "g1", count: 20, seq: 1, finishMs: 2400 }, go + 2600);
+    g.steps("b", { gid: "g1", count: 20, seq: 1, finishMs: 2000 }, go + 2900);
+    expect(g.s.finishOrder).toEqual(["b", "a"]);
+    expect(fx.filter((e) => e.t === "goal")).toEqual([{ t: "goal", pid: "a", rank: 1 }, { t: "goal", pid: "b", rank: 1 }]);
+    // 불가능하게 빠른 골인 시간(20걸음을 1초에)은 발표자 시간(3.0초)으로
+    g.steps("c", { gid: "g1", count: 20, seq: 1, finishMs: 1000 }, go + 3000);
+    expect(g.s.runners!.c.finishMs).toBe(3000);
+    expect(g.s.finishOrder).toEqual(["b", "a", "c"]);
+    c.set(go + 3000);
+    g.tick(c.now()); // 3명 골인 → 2.5초 뒤 결과
+    c.add(2500);
+    g.tick(c.now());
+    expect(g.s.points).toEqual({ b: 2 + 5 + 30, a: 2 + 5 + 20, c: 2 + 5 + 10 });
+  });
+
   it("제한 시간이 끝나면 골인 못 해도 결과", () => {
     const c = clock();
     const g = HostGame.run({ now: c.now, rng: () => 0 }, "g1", 300, 10, 3);

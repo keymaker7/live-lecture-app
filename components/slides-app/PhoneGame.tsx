@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AudienceGame } from "@/lib/games/host-game";
+import { MAX_STEPS_PER_SEC } from "@/lib/games/scoring";
 
 // 참가자 폰 — 게임 중 큰 버튼 화면 (설계서 §4-1). 소리는 없고, 정답·탈락 때 짧게 진동(되는 기기만).
 
@@ -36,7 +37,11 @@ export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
   // 달리기
   const [goAt, setGoAt] = useState<{ id: string; at: number }>({ id: "", at: 0 });
   const [steps, setSteps] = useState(0);
+  const stepsRef = useRef(0);
   const unsentRef = useRef(0);
+  // 폰도 발표자와 같은 규칙(초당 8걸음, GO 때 8걸음 미리)으로 센다 — 더 빨리 눌러 생긴 걸음은
+  // 발표자가 버리니, 폰이 세면 폰은 골인인데 발표자 쪽은 영영 못 채운다.
+  const bankRef = useRef({ bank: MAX_STEPS_PER_SEC, at: 0 });
 
   const open = g.phase === "open";
   if (open && openedAt.key !== qKey) setOpenedAt({ key: qKey, at: Date.now() });
@@ -44,6 +49,13 @@ export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
     setGoAt({ id: g.id, at: Date.now() + 3000 });
     setSteps(0);
   }
+
+  const sendSteps = (finishMs?: number) => {
+    const n = unsentRef.current;
+    if (n <= 0) return;
+    unsentRef.current = 0;
+    void emit("game-steps", finishMs === undefined ? { gid: g.id, count: n } : { gid: g.id, count: n, finishMs });
+  };
   const mine = choice.key === qKey ? choice : { key: qKey, value: null, tries: 0, text: "" };
   const jailed = !!g.out?.includes(pid);
   const res = g.reveal?.res?.[pid];
@@ -64,6 +76,13 @@ export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
     if (res?.[0] === 1) buzz(60);
     else if (res) buzz([180, 80, 180]);
   }, [g.reveal, g.phase, qKey, res]);
+
+  // 새 달리기(카운트다운 시작) — 걸음·통장 초기화. room-state 가 올 때마다 바뀌는 g.run 에 묶지 않는다.
+  useEffect(() => {
+    stepsRef.current = 0;
+    unsentRef.current = 0;
+    bankRef.current = { bank: MAX_STEPS_PER_SEC, at: goAt.at };
+  }, [goAt.id, goAt.at]);
 
   // 달리기: 누른 횟수를 묶어서 보낸다(묶음 간격은 발표자가 인원에 맞춰 정함)
   useEffect(() => {
@@ -96,8 +115,9 @@ export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
     else void emit("game-answer", { gid: g.id, round: g.round, choice: value });
   };
 
+  // now 는 0.2초마다 바뀌는 시계라 문제를 받은 순간보다 조금 이를 수 있다 → 제한 시간을 넘지 않게
   const left = g.type === "quiz" && open && g.q && openedAt.key === qKey
-    ? Math.max(0, Math.ceil((openedAt.at + g.q.limitMs - now) / 1000)) : null;
+    ? Math.min(Math.round(g.q.limitMs / 1000), Math.max(0, Math.ceil((openedAt.at + g.q.limitMs - now) / 1000))) : null;
 
   // ── 화면 ──
   let body: React.ReactNode;
@@ -134,9 +154,18 @@ export function PhoneGame({ game, pid, emit }: PhoneGameProps) {
           disabled={!running || done || ended}
           onPointerDown={(e) => {
             e.preventDefault();
-            if (!running || done || ended) return;
+            if (!running || done || ended || stepsRef.current >= goal) return;
+            const t = Date.now();
+            const b = bankRef.current;
+            b.bank = Math.min(MAX_STEPS_PER_SEC * 5, b.bank + (Math.max(0, t - Math.max(b.at, goAt.at)) / 1000) * MAX_STEPS_PER_SEC);
+            b.at = Math.max(b.at, t);
+            if (b.bank < 1) return; // 초당 8걸음 넘게는 안 센다
+            b.bank -= 1;
+            stepsRef.current += 1;
             unsentRef.current += 1;
-            setSteps((n) => Math.min(goal, n + 1));
+            setSteps(stepsRef.current);
+            // 골인은 묶음을 기다리지 않고 바로, 폰이 잰 골인 시간(GO 부터)과 함께 — 등수는 이 시간으로
+            if (stepsRef.current >= goal) sendSteps(t - goAt.at);
           }}
         >{done ? "🏁 골인!" : "달려!"}</button>
         <div className="pg-progress"><div style={{ width: `${(steps / goal) * 100}%` }} /></div>

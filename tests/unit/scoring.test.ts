@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseQuizSet, formatQuizSet, type QuizQuestion } from "../../lib/games/quiz-parse";
 import {
   DEFAULT_RULES, LATE_GRACE_MS, MAX_STEPS_PER_SEC, acceptAnswer, acceptSteps, isLate, isShortCorrect, judgeRps,
-  judgeSurvival, newStepBudget, normalizeShort, randomHand, rankStandings, rpsOutcome, scoreQuestion, scoreRun,
+  finishTime, judgeSurvival, newStepBudget, normalizeShort, randomHand, rankStandings, rpsOutcome, scoreQuestion, scoreRun,
   speedBonus, stepBatchMs, type AnswerRec, type Hand,
 } from "../../lib/games/scoring";
 
@@ -200,6 +200,22 @@ describe("§6-1 달리기 + 초당 8걸음 상한", () => {
   it("GO 전에 받은 걸음은 0", () => {
     const b = newStepBudget(5000);
     expect(acceptSteps(b, 10, 4999, 5000)).toBe(0);
+  });
+  it("골인 시간: 폰이 잰 값 — 1·2·3등은 묶음 도착 순이 아니라 골인 시간 순", () => {
+    const pts = scoreRun([
+      { pid: "late-batch", steps: 50, finishedAt: 9000, finishMs: 6100 }, // 묶음은 늦게 왔지만 먼저 골인
+      { pid: "early-batch", steps: 50, finishedAt: 7000, finishMs: 6900 },
+    ], 50, R);
+    expect(Object.fromEntries(pts)).toEqual({ "late-batch": 37, "early-batch": 27 });
+  });
+  it("골인 시간 검사: 초당 8걸음으로 불가능하게 빠르거나, 발표자가 받은 것보다 늦으면 발표자 시간", () => {
+    // 50걸음: GO 때 8걸음 + 42걸음/8 = 5.25초가 가장 빠른 정직한 골인
+    expect(finishTime(50, 5250, 6000)).toBe(5250);
+    expect(finishTime(50, 5249, 6000)).toBe(6000);
+    expect(finishTime(50, 7600, 6000)).toBe(6000); // 6000 + 1.5초 넘음
+    expect(finishTime(50, 7400, 6000)).toBe(7400); // 지연 여유 안
+    expect(finishTime(50, "abc", 6000)).toBe(6000);
+    expect(finishTime(50, undefined, 6000)).toBe(6000);
   });
   it("묶음 간격 = max(1, ceil(인원/25))초", () => {
     expect([1, 25, 26, 50, 51, 80].map(stepBatchMs)).toEqual([1000, 1000, 2000, 2000, 3000, 4000]);

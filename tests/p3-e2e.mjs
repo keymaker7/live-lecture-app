@@ -73,6 +73,23 @@ const pidOf = async (p) => p.evaluate((k) => localStorage.getItem(k), `ll:pid:${
 const pids = await Promise.all(phones.map(pidOf));
 const ctl = (label) => host.click(`.gm-controls button:has-text("${label}")`);
 const waitCtl = (label, ms = 8000) => tryWait(host.waitForSelector(`.gm-controls button:has-text("${label}")`, { timeout: ms }));
+// 캐릭터 발(그림 아래 가운데)이 자기 답 구역 안에 있나 — expect: pid → 구역 key
+const feetIn = (expect) => host.evaluate((exp) => {
+  const out = {};
+  for (const [pid, key] of Object.entries(exp)) {
+    const ch = document.querySelector(`.pz-ch[data-pid="${pid}"] .pz-sprite`);
+    const z = document.querySelector(`.pz-zone[data-key="${key}"]`);
+    if (!ch || !z) { out[pid] = "없음"; continue; }
+    const a = ch.getBoundingClientRect();
+    const b = z.getBoundingClientRect();
+    const fx = a.left + a.width / 2;
+    const fy = a.bottom;
+    out[pid] = fx >= b.left && fx <= b.right && fy >= b.top && fy <= b.bottom ? "in" : `밖 발${fx | 0},${fy | 0} 구역${b.left | 0}~${b.right | 0},${b.top | 0}~${b.bottom | 0}`;
+  }
+  return out;
+}, expect);
+const allIn = (o) => Object.values(o).every((v) => v === "in");
+const qrCollapsed = () => host.evaluate(() => !!document.querySelector(".qr-panel.collapsed"));
 const openDockGame = async () => {
   if (!(await host.locator(".dock-body").count())) await host.click(".dock-toggle");
   await host.click(".dock-tab:has-text('게임')");
@@ -87,18 +104,33 @@ await host.click("button:has-text('퀴즈 시작')");
 await host.click(".dock-toggle"); // 도구 접기
 const plazaOn = await tryWait(host.waitForFunction(() => document.querySelector(".pz-root")?.getAttribute("data-mode") === "plaza", null, { timeout: 5000 }));
 check("게임 시작 → 광장 게임 화면 자동 전환", plazaOn);
+check("게임 시작 → QR 패널 자동 접힘(답 구역 안 가림)", await qrCollapsed());
 check("폰: 곧 시작 화면", await tryWait(p1.waitForSelector(".pg-center h2:has-text('e2e 퀴즈')", { timeout: 6000 })));
 
 // OX
 await ctl("첫 문제 공개");
 const oxShown = await Promise.all(phones.map((p) => tryWait(p.waitForSelector(".pg-btn.ox.o", { timeout: 6000 }))));
 check("OX: 폰 3대 큰 버튼", oxShown.every(Boolean));
+// 폰 남은 시간 — 제한 10초인데 11초로 시작하던 것(0.2초 시계가 문제 받은 순간보다 이름)
+const timerMax = Math.max(...(await Promise.all(phones.map((p) => p.evaluate(async () => {
+  let max = 0;
+  for (let i = 0; i < 20; i++) {
+    const m = (document.querySelector(".pg-meta")?.textContent || "").match(/(\d+)초/);
+    if (m) max = Math.max(max, Number(m[1]));
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return max;
+})))));
+check("OX: 폰 남은 시간이 제한 10초를 넘지 않음", timerMax > 0 && timerMax <= 10, `처음 1초 최대 ${timerMax}초`);
 await shot(p1, "phone-ox");
 await p1.click(".pg-btn.ox.o");
 await p2.click(".pg-btn.ox.x");
 await p3.click(".pg-btn.ox.x");
 await sleep(300);
 await p3.click(".pg-btn.ox.o"); // 마감 전 답 바꾸기
+await sleep(3000);
+const oxFeet = await feetIn({ [pids[0]]: "0", [pids[1]]: "1", [pids[2]]: "0" });
+check("OX: 답 3초 뒤 캐릭터 발이 자기 구역 안(하나 O·두리 X·세찌 X→O)", allIn(oxFeet), JSON.stringify(oxFeet));
 const tallyOk = await tryWait(host.waitForFunction(() => document.querySelector(".gm-tally")?.textContent?.includes("O 2 : X 1"), null, { timeout: 6000 }));
 check("OX: 발표 화면 '지금 O 2 : X 1' (답 바꾸기 반영)", tallyOk, (await host.textContent(".gm-tally")) || "");
 await shot(host, "host-ox");
@@ -120,6 +152,9 @@ await shot(p2, "phone-mc");
 await p1.click(".pg-btn.mc >> nth=1");
 await p2.click(".pg-btn.mc >> nth=1");
 await p3.click(".pg-btn.mc >> nth=0");
+await sleep(3000);
+const mcFeet = await feetIn({ [pids[0]]: "1", [pids[1]]: "1", [pids[2]]: "0" });
+check("객관식: 답 3초 뒤 캐릭터 발이 자기 구역 안", allIn(mcFeet), JSON.stringify(mcFeet));
 await tryWait(host.waitForFunction(() => document.querySelector(".gm-tally")?.textContent?.includes("② 2"), null, { timeout: 6000 }));
 await shot(host, "host-mc");
 await ctl("지금 마감");
@@ -163,6 +198,7 @@ check("퀴즈 기록: 문제별 정답 수", JSON.stringify(quizRec?.log?.map((l
 await host.click(".gm-popup");
 await ctl("닫기");
 check("닫기 → 폰 원래 화면", await tryWait(p1.waitForSelector(".audience-tabs", { timeout: 6000 })));
+check("닫기 → QR 패널 원래대로", !(await qrCollapsed()));
 check("닫기 → 발표 화면 원래 보기", await tryWait(host.waitForFunction(() => document.querySelector(".pz-root")?.getAttribute("data-mode") !== "plaza" || localStorage.getItem("ll:view") === "plaza", null, { timeout: 5000 })));
 
 // ───────── 4. 가위바위보 ─────────
@@ -174,6 +210,9 @@ await p1.click(".pg-btn:has-text('바위')");
 await p2.click(".pg-btn:has-text('가위')");
 await p3.click(".pg-btn:has-text('보')");
 await tryWait(host.waitForFunction(() => document.querySelector(".gm-rps .gm-tally")?.textContent?.includes("3명"), null, { timeout: 6000 }));
+await sleep(3000);
+const rpsFeet = await feetIn({ [pids[0]]: "바위", [pids[1]]: "가위", [pids[2]]: "보" });
+check("가위바위보: 낸 뒤 3초 캐릭터 발이 자기 손 구역 안", allIn(rpsFeet), JSON.stringify(rpsFeet));
 await shot(host, "host-rps");
 await host.click(".gm-controls button:has-text('✌️ 가위')");
 const judged = await tryWait(p3.waitForSelector(".pg-jail, .pg-result.no", { timeout: 8000 }));
@@ -218,7 +257,10 @@ await shot(host, "host-run-result");
 const s3 = await snapGames(3);
 const runRec = s3?.games?.[2];
 const rp = pids.map((p) => runRec?.points?.[p]);
-check("달리기 점수: 1·2·3등 37·27·17", JSON.stringify([...rp].sort((x, y) => y - x)) === JSON.stringify([37, 27, 17]), JSON.stringify(rp));
+// 하나(0.15초 간격) → 두리(0.19) → 세찌(0.23) 순으로 골인 — 폰이 잰 골인 시간으로 등수
+check("달리기 점수: 골인 시간 순 1·2·3등 37·27·17(하나·두리·세찌)", JSON.stringify(rp) === JSON.stringify([37, 27, 17]), JSON.stringify(rp));
+const fms = pids.map((p) => s3?.game?.runners?.[p]?.finishMs);
+check("달리기: 폰이 잰 골인 시간 받음(하나 < 두리 < 세찌)", fms.every((x) => Number.isFinite(x)) && fms[0] < fms[1] && fms[1] < fms[2], JSON.stringify(fms));
 await host.click(".gm-popup").catch(() => {});
 await ctl("닫기");
 

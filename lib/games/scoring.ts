@@ -270,17 +270,35 @@ export function acceptSteps(budget: StepBudget, count: unknown, receivedAt: numb
 /** 묶음 간격 = max(1, ceil(인원/25))초 — 인원과 상관없이 초당 약 25건 */
 export const stepBatchMs = (people: number) => Math.max(1, Math.ceil(people / 25)) * 1000;
 
+/**
+ * 골인 시간(GO 부터 ms) — 폰이 잰 값을 쓴다(묶음 도착 시각은 60명이면 3초까지 늦어 등수가 뒤바뀐다).
+ * 믿을 수 없는 값은 발표자가 잰 시간으로: 초당 8걸음으로도 불가능하게 빠르거나(GO 때 미리 주는 8걸음 감안),
+ * 발표자가 받은 시각보다 늦은 값(폰 시계는 방송을 받은 뒤 시작하니 발표자 쪽보다 길 수 없다).
+ */
+export function finishTime(goal: number, clientMs: unknown, hostElapsedMs: number): number {
+  const host = Math.max(0, Math.round(hostElapsedMs));
+  const c = Number(clientMs);
+  if (clientMs === undefined || clientMs === null || !Number.isFinite(c)) return host;
+  const minMs = Math.max(0, ((goal - MAX_STEPS_PER_SEC) / MAX_STEPS_PER_SEC) * 1000);
+  if (c < minMs || c > host + LATE_GRACE_MS) return host;
+  return Math.round(c);
+}
+
 export interface RunnerResult {
   pid: string;
   steps: number;
   finishedAt: number | null;
+  /** GO 부터 골인까지(ms) — 있으면 이걸로 등수 */
+  finishMs?: number | null;
 }
 
-/** 달리기 점수: 골인 순서(받은 시각) 1·2·3등 + 완주 + 참가(걸음 1 이상) */
+const runKey = (r: RunnerResult) => r.finishMs ?? Number.POSITIVE_INFINITY;
+
+/** 달리기 점수: 골인 시간 1·2·3등 + 완주 + 참가(걸음 1 이상) */
 export function scoreRun(runners: RunnerResult[], goal: number, rules: ScoreRules): Map<string, number> {
   const pts = new Map<string, number>();
   const finished = runners.filter((r) => r.finishedAt !== null && r.steps >= goal)
-    .sort((a, b) => a.finishedAt! - b.finishedAt! || (a.pid < b.pid ? -1 : 1));
+    .sort((a, b) => runKey(a) - runKey(b) || a.finishedAt! - b.finishedAt! || (a.pid < b.pid ? -1 : 1));
   for (const r of runners) if (r.steps > 0) pts.set(r.pid, rules.join);
   finished.forEach((r, i) => {
     pts.set(r.pid, (pts.get(r.pid) ?? 0) + rules.runFinish + (i < 3 ? rules.runRank[i] : 0));
