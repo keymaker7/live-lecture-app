@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSlidesRealtime, type AudienceState, type JoinAck } from "@/hooks/useSlidesRealtime";
 import { readText, writeText } from "@/lib/realtime/storage";
 import { ANIMALS, characterById, characterForNickname } from "@/lib/plaza/characters";
+import { PhoneGame } from "@/components/slides-app/PhoneGame";
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "👏", "🔥", "💡", "🎉"];
 
@@ -27,6 +28,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [poll, setPoll] = useState<AudienceState["poll"]>(null);
   const [voted, setVoted] = useState(false);
   const pollIdRef = useRef("");
+  const [game, setGame] = useState<AudienceState["game"]>(null);
   const [myQuestions, setMyQuestions] = useState<string[]>([]);
   const [lastReactionAt, setLastReactionAt] = useState(0);
   const [sendLabel, setSendLabel] = useState("전송");
@@ -38,7 +40,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
   const [videoEnd, setVideoEnd] = useState("");
   const [videoSubmitLabel, setVideoSubmitLabel] = useState("영상 요청");
 
-  const { on, emit, ready } = useSlidesRealtime(roomId, "audience");
+  const { on, emit, ready, clientId } = useSlidesRealtime(roomId, "audience");
 
   // 같은 연수에 다시 들어올 때 쓰던 닉네임을 채워 둔다(참가자 ID 는 훅이 기억).
   useEffect(() => {
@@ -78,6 +80,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
 
     on("room-state", (state) => {
       const s = state as Partial<AudienceState>;
+      if (s.game !== undefined) setGame(s.game);
       if (s.poll !== undefined) {
         const active = s.poll?.active ? s.poll : null;
         // 새 투표가 열리면 다시 투표할 수 있게
@@ -249,7 +252,10 @@ export function JoinPage({ roomId }: JoinPageProps) {
           <span className="audience-status">👥 {participantCount}명 · ● 연결됨</span>
         </header>
 
-        {poll?.active && (
+        {/* 게임 중에는 큰 버튼 화면만 */}
+        {game && <PhoneGame game={game} pid={clientId} emit={emit} />}
+
+        {!game && poll?.active && (
           <div className="poll-vote-panel">
             <h3>{poll.question}</h3>
             <div className="poll-vote-options">
@@ -263,6 +269,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
           </div>
         )}
 
+        {!game && <>
         <nav className="audience-tabs">
           <button className={`aud-tab ${activeTab === "react" ? "active" : ""}`} onClick={() => setActiveTab("react")}>😊 반응</button>
           <button className={`aud-tab ${activeTab === "question" ? "active" : ""}`} onClick={() => setActiveTab("question")}>🙋 질문</button>
@@ -370,6 +377,7 @@ export function JoinPage({ roomId }: JoinPageProps) {
             <button className="btn-send" onClick={sendChat}>{sendLabel}</button>
           </div>
         </footer>
+        </>}
       </div>
     </div>
   );

@@ -6,7 +6,9 @@ import Link from "next/link";
 import { useSlidesRealtime } from "@/hooks/useSlidesRealtime";
 import { getCachedRoom } from "@/lib/session-store-client";
 import type { ActiveVideo } from "@/hooks/useSlidesRealtime";
-import { PlazaStage } from "@/components/slides-app/PlazaStage";
+import { PlazaStage, type PlazaHandle } from "@/components/slides-app/PlazaStage";
+import { GameStage, type GameView } from "@/components/slides-app/GameStage";
+import { GameDock } from "@/components/slides-app/GameDock";
 import { readText, writeText } from "@/lib/realtime/storage";
 
 type PlazaView = "walk" | "plaza";
@@ -72,6 +74,9 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [bandHidden, setBandHidden] = useState(() => pref("ll:band", "on") === "off");
   const [sfxOn, setSfxOn] = useState(() => pref("ll:sfx", "on") === "on");
   const [musicOn, setMusicOn] = useState(() => pref("ll:mus", "off") === "on");
+  // 게임 중이면 광장(게임 화면)으로 자동 전환, 닫으면 원래 보기로
+  const [gameActive, setGameActive] = useState(false);
+  const plazaRef = useRef<PlazaHandle | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvaContainerRef = useRef<HTMLDivElement>(null);
@@ -129,6 +134,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
   useEffect(() => {
     if (!ready || !room) return;
     emit("presenter-join", { roomId });
+
+    on("game", (v) => setGameActive(!!v && !!(v as GameView).s));
 
     // 발표자 탭을 새로고침했을 때 — 저장해 둔 채팅·이모지 기록으로 로그 패널을 다시 채운다.
     on("history", (data) => {
@@ -255,7 +262,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
         />
       )}
 
-      <div className="present-layout">
+      {/* 산책로 띠가 보일 때는 슬라이드를 띠 위 공간으로 줄여 가리지 않는다 */}
+      <div className={`present-layout ${plazaView === "walk" && !bandHidden && !gameActive ? "with-band" : ""}`}>
         <aside className="overlay-panel">
           <div className="reaction-stream">
             {reactions.map((r) => (
@@ -423,7 +431,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
             <div className="dock-tabs">
               {[
                 ["poll", "📊 투표"], ["questions", "🙋 질문"], ["timer", "⏱️ 타이머"],
-                ["video", "🎬 영상"],
+                ["video", "🎬 영상"], ["game", "🎮 게임"],
               ].map(([id, label]) => (
                 <button key={id} className={`dock-tab ${dockTab === id ? "active" : ""}`} onClick={() => setDockTab(id)}>{label}</button>
               ))}
@@ -489,6 +497,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
               </div>
             )}
 
+            {dockTab === "game" && <GameDock emit={emit} gameActive={gameActive} />}
+
             {dockTab === "video" && (
               <div className="dock-panel active">
                 <div className="video-toggle-row">
@@ -518,10 +528,12 @@ export function PresentPage({ roomId }: PresentPageProps) {
         on={on}
         off={off}
         title={room.title}
-        mode={plazaView === "plaza" ? "plaza" : bandHidden ? "hidden" : "walk"}
+        mode={gameActive || plazaView === "plaza" ? "plaza" : bandHidden ? "hidden" : "walk"}
         sfx={sfxOn}
         music={musicOn}
+        handleRef={plazaRef}
       />
+      <GameStage on={on} off={off} emit={emit} plaza={plazaRef} />
 
       {hostStatus === "standby" && (
         <div className="host-standby" role="alert">
@@ -534,7 +546,11 @@ export function PresentPage({ roomId }: PresentPageProps) {
       <header className="present-topbar">
         <span className="present-title">{room.title}</span>
         <span className="slide-type-badge">{slideTypeLabel}</span>
-        <span className="topbar-count">👥 {participantCount}</span>
+        {/* 무료 플랜 기준 60명까지 권장(keymaker 10/16 결정) — 넘으면 주황 표시 */}
+        <span
+          className={`topbar-count ${participantCount > 60 ? "over" : ""}`}
+          title={participantCount > 60 ? "60명까지 권장 — 넘으면 실시간 연결이 불안정할 수 있어요" : "60명까지 권장"}
+        >👥 {participantCount}{participantCount > 60 ? " · 60명까지 권장" : ""}</span>
         {showTimerBadge && <span className="timer-badge">⏱️ {fmtTimer(timerSec)}</span>}
         <div className="pz-controls">
           <button className={plazaView === "walk" ? "on" : ""} onClick={() => { setPlazaView("walk"); writeText("ll:view", "walk"); }}>🚶 산책로</button>

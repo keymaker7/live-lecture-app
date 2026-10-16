@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import { PlazaEngine, type PlazaMember, type PlazaMode } from "@/lib/plaza/engine";
 import { Confetti } from "@/lib/plaza/confetti";
 import { SoundFx } from "@/lib/plaza/sound";
@@ -16,6 +16,8 @@ interface PlazaStageProps {
   mode: PlazaMode;
   sfx: boolean;
   music: boolean;
+  /** 게임 화면(GameStage)이 같은 엔진·소리·꽃가루를 쓰도록 넘겨준다 */
+  handleRef?: MutableRefObject<PlazaHandle | null>;
 }
 
 export interface PlazaHandle {
@@ -39,7 +41,7 @@ const toMember = (p: Participant): PlazaMember => ({
 });
 
 /** 발표 화면 위 캐릭터 광장 — 엔진은 React 밖에서 돌고, 여기선 사건만 넘겨준다. */
-export function PlazaStage({ on, off, title, mode, sfx, music }: PlazaStageProps) {
+export function PlazaStage({ on, off, title, mode, sfx, music, handleRef: outRef }: PlazaStageProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const handleRef = useRef<PlazaHandle | null>(null);
@@ -51,6 +53,7 @@ export function PlazaStage({ on, off, title, mode, sfx, music }: PlazaStageProps
     const engine = new PlazaEngine(rootRef.current, { sound, confetti });
     const handle = { engine, confetti, sound };
     handleRef.current = handle;
+    if (outRef) outRef.current = handle;
 
     // 브라우저는 사용자가 한 번 눌러야 소리를 낸다
     const unlock = () => sound.unlock();
@@ -81,6 +84,7 @@ export function PlazaStage({ on, off, title, mode, sfx, music }: PlazaStageProps
       confetti.dispose();
       sound.dispose();
       handleRef.current = null;
+      if (outRef) outRef.current = null;
       if (window.__plaza?.engine === engine) delete window.__plaza;
     };
     // 소리 설정은 아래 effect 가 따로 맞춘다 — 엔진은 한 번만 만든다

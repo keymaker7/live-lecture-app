@@ -1354,3 +1354,41 @@ body {
 .pick-back { margin-top: 0.75rem; background: none; border: none; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; }
 .audience-nickname { display: inline-flex; align-items: center; gap: 0.4rem; }
 .audience-char { height: 30px; width: auto; }
+
+/* 참가자 폰 — 게임 큰 버튼 화면 */
+.pg { flex: 1; display: flex; flex-direction: column; padding: 1rem; }
+.pg-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.6rem; }
+.pg-big { font-size: 4rem; }
+.pg-center h2 { font-size: 1.6rem; color: var(--text-dark); }
+.pg-points { font-size: 1.5rem; font-weight: 900; color: #7048e8; }
+.pg-sub { color: var(--text-muted); font-size: 0.9rem; text-align: center; }
+.pg-play { display: flex; flex-direction: column; gap: 0.8rem; flex: 1; }
+.pg-meta { font-weight: 800; color: #7048e8; }
+.pg-q { font-size: 1.3rem; line-height: 1.4; color: var(--text-dark); word-break: keep-all; overflow-wrap: anywhere; }
+.pg-grid { display: grid; gap: 0.7rem; flex: 1; min-height: 46vh; }
+.pg-grid.two { grid-template-columns: 1fr 1fr; }
+.pg-grid.three { grid-template-columns: 1fr; }
+.pg-grid.four { grid-template-columns: 1fr 1fr; }
+.pg-btn { border: none; border-radius: 18px; font-size: 1.3rem; font-weight: 900; color: #fff; background: #7048e8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem; cursor: pointer; padding: 0.6rem; box-shadow: 0 6px 0 rgba(0, 0, 0, 0.15); touch-action: manipulation; word-break: keep-all; }
+.pg-btn:disabled { opacity: 0.45; }
+.pg-btn.ox { font-size: 5rem; }
+.pg-btn.o { background: #339af0; }
+.pg-btn.x { background: #fa5252; }
+.pg-btn.picked { outline: 6px solid #ffd84d; outline-offset: -6px; transform: translateY(3px); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.15); }
+.pg-mc-no { font-size: 1.8rem; }
+.pg-emoji { font-size: 3rem; }
+.pg-short { display: flex; flex-direction: column; gap: 0.6rem; }
+.pg-short input { font-size: 1.3rem; padding: 0.9rem 1rem; border-radius: 12px; border: 2px solid var(--accent); }
+.pg-result { text-align: center; font-size: 1.5rem; font-weight: 900; border-radius: 16px; padding: 0.9rem; background: var(--surface3); color: var(--text-dark); display: flex; flex-direction: column; gap: 0.2rem; }
+.pg-result small { font-size: 0.95rem; font-weight: 700; color: var(--text-muted); }
+.pg-result.ok { background: #d3f9d8; color: #2b8a3e; }
+.pg-result.no { background: #ffe3e3; color: #c92a2a; }
+.pg-result.void { background: #e5dbff; color: #5f3dc4; font-size: 1.1rem; }
+.pg-result.wait { background: #fff3bf; color: #8a6d00; font-size: 1.2rem; }
+.pg-jail { text-align: center; font-weight: 800; padding: 2rem 1rem; border-radius: 16px; background: repeating-linear-gradient(90deg, #555 0 6px, #ddd 6px 40px); color: #222; }
+.pg-countdown { font-size: 5rem; font-weight: 900; color: #e5484d; }
+.pg-run { width: min(78vw, 300px); height: min(78vw, 300px); border-radius: 50%; border: none; background: radial-gradient(circle at 35% 30%, #ff8787, #e03131); color: #fff; font-size: 2.6rem; font-weight: 900; box-shadow: 0 10px 0 #a51111; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.pg-run:active { transform: translateY(6px); box-shadow: 0 4px 0 #a51111; }
+.pg-run.off { background: #ced4da; box-shadow: 0 10px 0 #868e96; }
+.pg-progress { width: 86%; height: 16px; border-radius: 999px; background: #e9ecef; overflow: hidden; }
+.pg-progress div { height: 100%; background: linear-gradient(90deg, #ffd84d, #ff922b); transition: width 0.15s; }
