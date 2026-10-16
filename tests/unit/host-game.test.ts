@@ -198,11 +198,11 @@ describe("달리기", () => {
     expect(g.s.winners).toEqual(["a"]);
   });
 
-  it("60명(3초 묶음): 먼저 골인한 사람이 늦게 도착해도 등수는 골인 시간 순, 골인 효과도 그 등수", () => {
+  it("60명(4초 묶음): 먼저 골인한 사람이 늦게 도착해도 등수는 골인 시간 순, 골인 효과도 그 등수", () => {
     const c = clock();
     const fx: GameEffect[] = [];
     const g = HostGame.run({ now: c.now, rng: () => 0, onEffect: (e) => fx.push(e) }, "g1", 20, 60, 60);
-    expect(g.s.batchMs).toBe(3000);
+    expect(g.s.batchMs).toBe(4000);
     g.runStart();
     g.markBroadcast(c.now());
     const go = g.s.goAt!;

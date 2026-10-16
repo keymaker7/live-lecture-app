@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase-client";
 import { HostLock, type HostStatus, type RequestState, type TakeoverPrompt } from "@/lib/realtime/host-lock";
-import { countMessage } from "@/lib/realtime/stats";
+import { countMessage, countNote } from "@/lib/realtime/stats";
 import { bumpMyActivity, hostTabId, readJSON, stablePid, stableToken, writeJSON } from "@/lib/realtime/storage";
 import { sha256Hex } from "@/lib/realtime/sha256";
 import { loadHostKey } from "@/lib/realtime/host-key";
@@ -135,6 +135,11 @@ const HISTORY_MAX = 500;
 const FLUSH_GAP_MS = 1250;
 const FLUSH_BATCH_MS = 120;
 const SAVE_DEBOUNCE_MS = 2000;
+// 방송 문지기(60명 달리기 실측 1초 최고 106건) — room-state 를 보내기 직전, 최근 1초에 받은 명령 수×2(보냄+받음)
+// + 이 방송(인원+1)이 90을 넘으면 0.25초씩 미뤄 다시 본다. 2.5초를 기다렸으면 그냥 보낸다(진행이 멈추지 않게).
+const GATE_LIMIT = 90;
+const GATE_RETRY_MS = 250;
+const GATE_MAX_WAIT_MS = 2500;
 const JOIN_RETRY_MS = 5000;
 // 발표자가 돌아왔을 때 폰들이 다시 들어오는 시간을 인원에 맞춰 흩는다(재입장 초당 약 7건 이하).
 export const rejoinSpreadMs = (people: number) => Math.min(30000, Math.max(4000, people * 150));
@@ -222,6 +227,12 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
   const lastAudienceJsonRef = useRef("");
   const lastFlushAtRef = useRef(0);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 최근에 받은 명령 시각(1초 창) — 방송 문지기용 */
+  const recvTimesRef = useRef<number[]>([]);
+  /** 문지기가 다시 볼 때 부를 최신 flush */
+  const flushRef = useRef<() => void>(() => {});
+  /** 문지기가 미루기 시작한 시각(0 = 안 미룸) */
+  const gateSinceRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── 참가자 상태 ──
@@ -345,7 +356,21 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     const aud = audienceState();
     const json = JSON.stringify(aud);
     const acks = pendingAcksRef.current;
-    if (json === lastAudienceJsonRef.current && acks.length === 0) return;
+    if (json === lastAudienceJsonRef.current && acks.length === 0) { gateSinceRef.current = 0; return; }
+    // 방송 문지기 — 받은 명령이 몰리는 1초에 전원 방송까지 겹치면 무료 한도(초당 100)를 넘는다
+    const now = Date.now();
+    const recent = recvTimesRef.current;
+    while (recent.length && recent[0] <= now - 1000) recent.shift();
+    const projected = recent.length * 2 + (onlineCount() + 1);
+    if (projected > GATE_LIMIT) {
+      if (!gateSinceRef.current) gateSinceRef.current = now;
+      if (now - gateSinceRef.current < GATE_MAX_WAIT_MS) {
+        countNote("gate-wait");
+        flushTimerRef.current = setTimeout(() => flushRef.current(), GATE_RETRY_MS);
+        return;
+      }
+    }
+    gateSinceRef.current = 0;
     pendingAcksRef.current = [];
     lastAudienceJsonRef.current = json;
     lastFlushAtRef.current = Date.now();
@@ -354,7 +379,8 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     void publicRef.current?.send({ type: "broadcast", event: "room-state", payload });
     // 문제·달리기 시계는 폰에 실제로 나간 이 순간부터 잰다
     gameRef.current?.markBroadcast(Date.now());
-  }, [audienceState]);
+  }, [audienceState, onlineCount]);
+  useEffect(() => { flushRef.current = flush; }, [flush]);
 
   const scheduleFlush = useCallback(() => {
     if (flushTimerRef.current || statusRef.current !== "active") return;
@@ -941,6 +967,9 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       CMD_EVENTS.forEach((event) => {
         cmdCh.on("broadcast", { event }, ({ payload }) => {
           countMessage("recv", event);
+          const rt = recvTimesRef.current;
+          rt.push(Date.now());
+          if (rt.length > 400) rt.splice(0, rt.length - 400);
           const p = (payload || {}) as Record<string, unknown>;
           if (statusRef.current === "active") handleCommand(event, p, true);
           else if (statusRef.current === "deciding" && bufferedRef.current.length < 2000) bufferedRef.current.push([event, p]);

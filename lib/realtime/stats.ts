@@ -7,6 +7,8 @@ export interface RealtimeStats {
   sent: Record<string, number>;
   recv: Record<string, number>;
   log: Array<[number, Dir, string]>;
+  /** 메시지가 아닌 표시(예: 방송 문지기가 미룬 횟수) — 초당 메시지 계산에 안 섞이게 따로 */
+  notes?: Record<string, number>;
 }
 
 declare global {
@@ -25,4 +27,12 @@ export function countMessage(dir: Dir, event: string) {
     try { logging = localStorage.getItem("ll:debug") === "1"; } catch { logging = false; }
   }
   if (logging && s.log.length < 50000) s.log.push([Date.now(), dir, event]);
+}
+
+/** 메시지가 아닌 것을 센다(시각 기록 없음) */
+export function countNote(name: string) {
+  if (typeof window === "undefined") return;
+  const s = (window.__llStats ??= { sent: {}, recv: {}, log: [] });
+  s.notes = s.notes ?? {};
+  s.notes[name] = (s.notes[name] || 0) + 1;
 }

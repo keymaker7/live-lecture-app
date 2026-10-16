@@ -293,8 +293,9 @@ export function acceptSteps(budget: StepBudget, count: unknown, receivedAt: numb
   return ok;
 }
 
-/** 묶음 간격 = max(1, ceil(인원/25))초 — 인원과 상관없이 초당 약 25건 */
-export const stepBatchMs = (people: number) => Math.max(1, Math.ceil(people / 25)) * 1000;
+/** 묶음 간격 = max(1, ceil(인원/15))초 — 인원과 상관없이 초당 약 15건(60명 4초).
+ *  처음엔 /25 였는데 60명 실측에서 막판 묶음 + 전원 방송이 겹쳐 1초 106건 — 한도 100 밑으로 여유를 둔다. */
+export const stepBatchMs = (people: number) => Math.max(1, Math.ceil(people / 15)) * 1000;
 
 /**
  * 골인 시간(GO 부터 ms) — 폰이 잰 값을 쓴다(묶음 도착 시각은 60명이면 3초까지 늦어 등수가 뒤바뀐다).

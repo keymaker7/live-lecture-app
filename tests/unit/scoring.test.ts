@@ -217,8 +217,8 @@ describe("§6-1 달리기 + 초당 8걸음 상한", () => {
     expect(finishTime(50, "abc", 6000)).toBe(6000);
     expect(finishTime(50, undefined, 6000)).toBe(6000);
   });
-  it("묶음 간격 = max(1, ceil(인원/25))초", () => {
-    expect([1, 25, 26, 50, 51, 80].map(stepBatchMs)).toEqual([1000, 1000, 2000, 2000, 3000, 4000]);
+  it("묶음 간격 = max(1, ceil(인원/15))초 — 60명 4초", () => {
+    expect([1, 15, 16, 30, 31, 60, 80].map(stepBatchMs)).toEqual([1000, 1000, 2000, 2000, 3000, 4000, 6000]);
   });
 });
 
