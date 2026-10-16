@@ -14,6 +14,8 @@ import type { ResultsDbStatus, Standing } from "@/hooks/useSlidesRealtime";
 import { readText, writeText } from "@/lib/realtime/storage";
 
 type PlazaView = "walk" | "plaza";
+// 앱이 크게 바뀌어 참가자 폰을 새로고침해야 할 때 올린다 — 발표 PC 마다 이 버전을 처음 열 때 한 번 안내
+const APP_NOTICE_VERSION = "2026-10-16-plaza";
 const pref = (key: string, fallback: string) => (typeof window === "undefined" ? fallback : readText(key) ?? fallback);
 
 interface RoomData {
@@ -102,6 +104,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const [gamesCount, setGamesCount] = useState(0);
   const [rankOpen, setRankOpen] = useState(false);
   const [dbStatus, setDbStatus] = useState<ResultsDbStatus>({ state: "idle", unsaved: 0 });
+  const [updateNotice, setUpdateNotice] = useState(() => pref("ll:notice", "") !== APP_NOTICE_VERSION);
+  const closeUpdateNotice = () => { setUpdateNotice(false); writeText("ll:notice", APP_NOTICE_VERSION); };
 
   const openRankBoard = () => {
     setRankOpen(true);
@@ -571,6 +575,12 @@ export function PresentPage({ roomId }: PresentPageProps) {
         handleRef={plazaRef}
       />
       <GameStage on={on} off={off} emit={emit} plaza={plazaRef} />
+      {updateNotice && (
+        <div className="update-notice" role="status">
+          <span>📱 앱이 새로 바뀌었어요 — 시작 전에 참가자에게 <b>&ldquo;폰 새로고침 한 번&rdquo;</b>을 안내해 주세요. (무료 플랜은 60명까지 권장)</span>
+          <button className="btn-sm" onClick={closeUpdateNotice}>확인</button>
+        </div>
+      )}
       {rankOpen && <RankBoard standings={standings} games={gamesCount} onClose={() => setRankOpen(false)} />}
 
       {hostStatus === "standby" && (

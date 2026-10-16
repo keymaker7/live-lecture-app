@@ -41,6 +41,7 @@ const host = await hostCtx.newPage();
 watch(host, "발표자");
 await host.goto(`${BASE}/presenter?room=${roomId}`);
 await host.waitForFunction(() => (window.__llStats?.sent?.["host-rejoined"] || 0) >= 1, null, { timeout: 15000 });
+await host.click(".update-notice button", { timeout: 3000 }).catch(() => {}); // 새 버전 안내 닫기
 
 const NAMES = ["하나", "두리", "세찌"];
 const phones = [];

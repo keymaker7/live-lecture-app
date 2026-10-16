@@ -45,6 +45,11 @@ const roomId = new URL(host.url()).searchParams.get("room");
 check("연수 만들기", made && /^[0-9a-f]{8}$/.test(roomId || ""), roomId || "");
 await tryWait(host.waitForSelector(".present-title", { timeout: 10000 }));
 check("발표 화면 제목", (await host.textContent(".present-title")) === "THOR 회귀시험");
+check("연수 만든 브라우저에 발표자 비밀값 저장(32자리)", /^[0-9a-f]{32}$/.test((await host.evaluate((k) => localStorage.getItem(k), `ll:hk:${roomId}`)) || ""));
+const noticeShown = await tryWait(host.waitForSelector(".update-notice", { timeout: 4000 }));
+await host.click(".update-notice button").catch(() => {});
+const noticeGone = await tryWait(host.waitForSelector(".update-notice", { state: "detached", timeout: 3000 }));
+check("새 버전 안내 '폰 새로고침 한 번' — 처음 한 번 뜨고 [확인]으로 닫힘", noticeShown && noticeGone && ((await host.evaluate(() => localStorage.getItem("ll:notice"))) || "").length > 0);
 await host.waitForFunction(() => document.querySelector(".host-standby") === null, null, { timeout: 5000 }).catch(() => {});
 await sleep(1800); // 진행 탭 정하기(1.2초)
 

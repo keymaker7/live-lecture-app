@@ -71,6 +71,7 @@ const host = await hostCtx.newPage();
 watch(host, "발표자");
 await host.goto(`${BASE}/presenter?room=${roomId}`);
 await host.waitForFunction(() => (window.__llStats?.sent?.["host-rejoined"] || 0) >= 1, null, { timeout: 15000 });
+await host.click(".update-notice button", { timeout: 3000 }).catch(() => {}); // 새 버전 안내 닫기
 
 const NAMES = ["하나", "두리", "세찌"];
 const phones = [];
@@ -267,6 +268,7 @@ const host2 = await otherCtx.newPage();
 watch(host2, "다른PC");
 await host2.goto(link);
 await host2.waitForFunction(() => (window.__llStats?.sent?.["host-rejoined"] || 0) >= 1, null, { timeout: 20000 });
+await host2.click(".update-notice button", { timeout: 3000 }).catch(() => {});
 const hashGone = await host2.evaluate(() => window.location.hash === "");
 const hk2 = await host2.evaluate((k) => localStorage.getItem(k), `ll:hk:${roomId}`);
 check("다른 PC: 주소의 #hk= 를 저장하고 주소에서 지움", hashGone && hk2 === hk, `hash 지움 ${hashGone}`);
