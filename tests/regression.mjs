@@ -193,8 +193,63 @@ watchErrors(other, "다른PC");
 await other.goto(`${BASE}/presenter?room=${roomId}`);
 const otherOk = await tryWait(other.waitForSelector(".present-title", { timeout: 10000 }));
 check("다른 PC 에서 연수 열기", otherOk && (await other.textContent(".present-title")) === "THOR 회귀시험");
+
+// 12. 넘겨받기는 요청 — 참가자가 발표자 주소를 열어 버튼을 눌러도 강사 창에서 [거절]하면 그대로(Loki 🟡1)
+await other.waitForSelector(".host-standby button", { timeout: 8000 }).catch(() => {});
+await other.click(".host-standby button");
+const prompted = await tryWait(host.waitForSelector(".takeover-prompt", { timeout: 8000 }));
+const promptText = prompted ? ((await host.textContent(".takeover-prompt")) || "").replace(/\s+/g, " ") : "";
+await host.screenshot({ path: path.join(OUT, "regression-takeover-prompt.png") });
+check("넘겨받기 요청 → 진행 창에 [거절]/[지금 넘기기] + 남은 초", prompted && /\d+초 뒤 자동/.test(promptText), promptText.slice(0, 80));
+check("요청 중에도 진행 창은 그대로(바로 밀려나지 않음)", !(await host.locator(".host-standby").isVisible()));
+await host.click(".takeover-deny");
+const denied = await tryWait(other.waitForSelector(".host-standby:has-text('거절했어요')", { timeout: 8000 }));
+await sleep(1500);
+check("[거절] → 요청한 창은 보기 전용 그대로, 진행 창 유지", denied && !(await host.locator(".host-standby").isVisible()) && !(await host.locator(".takeover-prompt").isVisible()));
 await host.screenshot({ path: path.join(OUT, "regression-host.png") });
 await phone.screenshot({ path: path.join(OUT, "regression-phone.png") });
+
+// 13. 「종료」 — 이 PC 의 발표자 비밀값 지우기(Loki 🟢4). [취소]면 그대로.
+const hkKey = `ll:hk:${roomId}`;
+host.once("dialog", (d) => void d.dismiss());
+await host.click(".topbar-end");
+await sleep(500);
+const keptOnCancel = !!(await host.evaluate((k) => localStorage.getItem(k), hkKey)) && host.url().includes("/presenter");
+host.once("dialog", (d) => void d.accept());
+await host.click(".topbar-end");
+await tryWait(host.waitForURL((u) => !u.pathname.startsWith("/presenter"), { timeout: 8000 }));
+const clearedOnEnd = (await host.evaluate((k) => localStorage.getItem(k), hkKey)) === null;
+check("「종료」: [취소]면 그대로, [확인]이면 이 PC 발표자 비밀값 지움", keptOnCancel && clearedOnEnd, `취소 유지 ${keptOnCancel} · 확인 지움 ${clearedOnEnd}`);
+
+// 14. 캔바 연수 — 공유 열쇠가 든 주소로 iframe 직접(SDK 로 열면 열쇠가 빠져 403). 시험용 캔바 주소는 환경 변수로만(CANVA_URL).
+if (process.env.CANVA_URL) {
+  const cr = await (await fetch(`${BASE}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slideUrl: process.env.CANVA_URL, title: "THOR 캔바 회귀" }) })).json();
+  const token = process.env.CANVA_URL.match(/design\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+)/)?.[1] || "";
+  const cctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+  const cpage = await cctx.newPage();
+  const canvaErrors = [];
+  const canvaResp = [];
+  cpage.on("console", (m) => { if (m.type() === "error") canvaErrors.push(m.text().slice(0, 160)); });
+  const canvaFail = [];
+  cpage.on("response", (r) => {
+    if (/canva\.com\/design\//.test(r.url())) canvaResp.push(`${r.status()} ${r.url().replace(token, "<열쇠>").slice(0, 90)}`);
+    // 캔바 자체 사용 통계(/_ajax/ae/)는 캔바 공식 퍼가기 코드를 빈 페이지에 붙여도 403 이 난다(캔바 안쪽 일, 우리 화면과 무관) — 그 밖의 4xx 만 센다
+    if (r.status() >= 400 && !/canva\.com\/_ajax\/ae\//.test(r.url())) canvaFail.push(`${r.status()} ${r.request().resourceType()} ${r.url().split("?")[0].replace(token, "<열쇠>").slice(0, 80)}`);
+  });
+  await cpage.goto(`${BASE}/presenter?room=${cr.roomId}`);
+  const frameOk = await tryWait(cpage.waitForSelector("iframe.canva-frame", { timeout: 10000 }));
+  const src = frameOk ? await cpage.getAttribute("iframe.canva-frame", "src") : "";
+  await sleep(6000);
+  await cpage.screenshot({ path: path.join(OUT, "regression-canva.png") });
+  const bad = canvaErrors.filter((t) => /X-Frame-Options|frame-ancestors|Refused to display/i.test(t));
+  const first = canvaResp.find((x) => x.includes("/view"));
+  check("캔바 연수 → 발표 화면 iframe 에 공유 열쇠 포함(?embed)", frameOk && !!token && src.includes(`/${token}/view?embed`), (src || "").replace(token, "<열쇠>"));
+  check("캔바: 슬라이드 문서 응답 200, X-Frame-Options 거부 없음, 403 은 캔바 통계 호출뿐", bad.length === 0 && canvaFail.length === 0 && !!first && first.startsWith("200"),
+    `${first || "응답 없음"} · 그 밖 4xx ${canvaFail.length}${canvaFail.length ? ": " + canvaFail.join(" | ") : ""}${bad.length ? " · " + bad.join(" | ") : ""}`);
+  await cctx.close();
+} else {
+  console.log("SKIP 캔바 연수 — CANVA_URL 없음");
+}
 
 check("콘솔 오류 0", errors.length === 0, errors.slice(0, 3).join(" | "));
 fs.writeFileSync(path.join(OUT, "regression-result.json"), JSON.stringify({ roomId, results, errors }, null, 2));

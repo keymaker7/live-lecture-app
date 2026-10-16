@@ -60,6 +60,12 @@ if (isMain) {
   check("v2: 해시 모양이 아니면 거절", !!r.error);
   r = await rpcAs(db, "get_lecture_room", { p_id: "aaaa0001" });
   check("get_lecture_room 은 계속 읽힘", !r.error, r.error?.message);
+  const roomRow = await (async () => {
+    await db.exec("SET ROLE anon");
+    try { return (await db.query("SELECT * FROM public.get_lecture_room($1)", ["aaaa0001"])).rows[0]; } finally { await db.exec("RESET ROLE"); }
+  })();
+  const stored = (await db.query("SELECT host_key_hash FROM lecture_rooms WHERE id = 'aaaa0001'")).rows[0].host_key_hash;
+  check("get_lecture_room: 해시 열은 비워서 돌려줌(표에는 그대로)", roomRow?.title === "새 연수" && roomRow?.slide_url === "https://x" && roomRow.host_key_hash === null && stored === hkHash, JSON.stringify({ title: roomRow?.title, hash: roomRow?.host_key_hash }));
 
   // 2. 표는 잠김
   await db.exec("SET ROLE anon");
@@ -88,6 +94,9 @@ if (isMain) {
   check("이상한 종류 → invalid", r.data === "invalid", JSON.stringify(r));
   r = await rpcAs(db, "record_game_result", { p_room: "aaaa0001", p_host_key: hk, p_payload: { ...payload("g8", 1), pad: "x".repeat(270000) } });
   check("256KB 넘는 묶음 → invalid", r.data === "invalid", JSON.stringify(r));
+  r = await rpcAs(db, "record_game_result", { p_room: "aaaa0001", p_host_key: hk, p_payload: { ...payload("g7", 1), startedAt: 1e300, endedAt: -5 } });
+  check("범위 밖 시각(1e300 등)도 예외 없이 저장(시각만 비움)", r.data === "ok" && !r.error, JSON.stringify(r));
+  await db.query("DELETE FROM lecture_game_results WHERE game_id = 'g7'");
   r = await rpcAs(db, "record_game_result", { p_room: "aaaa0001", p_host_key: hk, p_payload: payload("g2", 5) });
   check("두 번째 게임 저장", r.data === "ok", JSON.stringify(r));
 

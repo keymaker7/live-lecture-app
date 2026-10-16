@@ -90,3 +90,22 @@ export async function parseSlideInput(input: string): Promise<ParsedSlide | null
   }
   return { type: "iframe", embedUrl: trimmed, slideUrl: trimmed };
 }
+
+/**
+ * 발표 화면에 캔바를 띄울 iframe 주소 — 공유 열쇠가 들어간 공식 퍼가기 모양
+ * `https://www.canva.com/design/{id}/{열쇠}/view?embed`.
+ * SDK(data-design-id 만 넘김)는 열쇠 없는 /design/{id}/view?embed 로 열어서 403 + X-Frame-Options 로 안 뜬다.
+ * 저장된 보기 주소(canvaViewUrl)나 원래 주소에 열쇠가 없으면 null — 그땐 예전처럼 SDK 로.
+ */
+export function canvaEmbedSrc(designId: string | null | undefined, ...urls: Array<string | null | undefined>): string | null {
+  if (!designId || !/^[A-Za-z0-9_-]+$/.test(designId)) return null;
+  for (const u of urls) {
+    if (!u) continue;
+    const m = u.match(/canva\.com\/design\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)/i);
+    if (!m || m[1] !== designId) continue;
+    const token = m[2];
+    if (["view", "edit", "watch", "present"].includes(token.toLowerCase())) continue;
+    return `https://www.canva.com/design/${designId}/${token}/view?embed`;
+  }
+  return null;
+}

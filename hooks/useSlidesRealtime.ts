@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase-client";
-import { HostLock, type HostStatus } from "@/lib/realtime/host-lock";
+import { HostLock, type HostStatus, type RequestState, type TakeoverPrompt } from "@/lib/realtime/host-lock";
 import { countMessage } from "@/lib/realtime/stats";
 import { bumpMyActivity, hostTabId, readJSON, stablePid, stableToken, writeJSON } from "@/lib/realtime/storage";
 import { sha256Hex } from "@/lib/realtime/sha256";
@@ -138,6 +138,8 @@ const SAVE_DEBOUNCE_MS = 2000;
 const JOIN_RETRY_MS = 5000;
 // 발표자가 돌아왔을 때 폰들이 다시 들어오는 시간을 인원에 맞춰 흩는다(재입장 초당 약 7건 이하).
 export const rejoinSpreadMs = (people: number) => Math.min(30000, Math.max(4000, people * 150));
+/** 폰: host-rejoined 를 따르는 최소 간격 */
+const REJOIN_MIN_GAP_MS = 30000;
 
 const CMD_EVENTS = [
   "join-room", "leave-room", "reaction", "chat", "vote-poll",
@@ -189,6 +191,9 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
   const publicRef = useRef<RealtimeChannel | null>(null);
   const cmdRef = useRef<RealtimeChannel | null>(null);
   const [ready, setReady] = useState(!isSupabaseConfigured);
+  // 넘겨받기 요청(Loki 🟡1): 진행 탭에 뜨는 [거절]/[넘기기] 안내 · 요청 탭의 진행 상황
+  const [takeoverPrompt, setTakeoverPrompt] = useState<TakeoverPrompt | null>(null);
+  const [requestState, setRequestState] = useState<RequestState>({ phase: "idle" });
   const [hostStatus, setHostStatus] = useState<HostStatus>(
     role === "presenter" && isSupabaseConfigured ? "deciding" : "active"
   );
@@ -927,6 +932,8 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
           else if (s === "standby") bufferedRef.current = [];
         },
         onDemote: () => saveNow(),
+        onPrompt: (p) => setTakeoverPrompt(p),
+        onRequest: (r) => setRequestState(r),
       });
       lockRef.current = lock;
       lock.attach(cmdCh);
@@ -992,20 +999,28 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
       }
       emitLocal("room-state", s);
     });
+    // host-rejoined 는 공용 채널이라 누구나 보낼 수 있다(Loki 🟢2) — 폰은 최소 4초에 흩고, 30초에 한 번만 따른다.
+    // 30초 안에 또 오면 버리지 않고 "지난번 + 30초" 이후로 미룬다(강사가 연달아 새로고침해도 결국 다시 붙는다).
+    let rejoinTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastRejoinAt = 0;
     publicCh.on("broadcast", { event: "host-rejoined" }, ({ payload }) => {
       countMessage("recv", "host-rejoined");
-      const spread = Math.min(30000, Math.max(1000, Number((payload as { spreadMs?: number })?.spreadMs) || 4000));
-      if (!myNickRef.current) return;
-      ackedRef.current = false;
-      // 한꺼번에 몰리지 않게 발표자가 정해 준 시간(인원×0.15초, 최소 4초) 안에서 흩어서
-      setTimeout(() => {
+      const spread = Math.min(30000, Math.max(4000, Number((payload as { spreadMs?: number })?.spreadMs) || 4000));
+      if (!myNickRef.current || rejoinTimer) return;
+      const now = Date.now();
+      const wait = Math.max(Math.random() * spread, lastRejoinAt + REJOIN_MIN_GAP_MS - now);
+      lastRejoinAt = now + wait;
+      rejoinTimer = setTimeout(() => {
+        rejoinTimer = null;
+        if (disposed) return;
+        ackedRef.current = false;
         sendJoin();
         const v = lastVoteRef.current;
         if (v) void audienceSend("vote-poll", { pid, nickname: myNickRef.current, ...v });
         const a = lastGameAnswerRef.current;
         if (a) void audienceSend("game-answer", a);
-      }, Math.random() * spread);
-      startJoinRetry();
+        startJoinRetry();
+      }, wait);
     });
     publicCh.subscribe((status) => {
       if (status === "SUBSCRIBED" && !disposed) setReady(true);
@@ -1019,6 +1034,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
 
     return () => {
       disposed = true;
+      if (rejoinTimer) clearTimeout(rejoinTimer);
       window.removeEventListener("pagehide", leave);
       leave();
       if (joinRetryRef.current) clearInterval(joinRetryRef.current);
@@ -1101,10 +1117,13 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
     stateRef.current = { ...stateRef.current, ...state };
   }, [roomId]);
 
-  const takeover = useCallback(async () => {
-    const lock = lockRef.current;
-    if (!lock) return;
-    await lock.takeover(); // 넘겨받으면 becomeActive 가 앞 탭이 막 저장한 상태를 읽는다
+  /** [여기서 진행 요청] — 진행 중인 탭이 거절하지 않으면 넘겨받는다(넘겨받으면 becomeActive 가 앞 탭이 막 저장한 상태를 읽는다) */
+  const takeover = useCallback(() => {
+    lockRef.current?.requestTakeover();
+  }, []);
+  /** 진행 탭: 넘겨받기 요청에 답 */
+  const answerTakeover = useCallback((ok: boolean) => {
+    lockRef.current?.answerTakeover(ok);
   }, []);
 
   /** 결과 내보내기(CSV)·순위판용 — 지금 기록 그대로 */
@@ -1117,7 +1136,7 @@ export function useSlidesRealtime(roomId: string, role: "presenter" | "audience"
   return {
     on, off, emit, ready, setInitialState,
     clientId: role === "audience" ? pid : tabId,
-    hostStatus, takeover,
+    hostStatus, takeover, takeoverPrompt, requestState, answerTakeover,
     getResults,
     /** 발표자 비밀값(🔑 발표자 링크 복사용) — 폰에선 빈 값 */
     hostSecret,

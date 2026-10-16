@@ -1395,3 +1395,12 @@ body {
 /* P4 폰 위쪽 Lv · 점수 · 순위, 게임 끝 순위 */
 .audience-rank { margin-right: 8px; color: #7048e8; font-weight: 800; }
 .pg-rank { font-size: 1.15rem; font-weight: 800; color: #7048e8; margin-top: 4px; }
+/* 넘겨받기 요청 — 진행 탭에 뜨는 [거절]/[지금 넘기기] (Loki 🟡1) */
+.takeover-prompt {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 200;
+  width: min(520px, 92vw); padding: 1rem 1.2rem; border-radius: 16px;
+  background: #fff; border: 3px solid #f59f00; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3); text-align: center;
+}
+.takeover-prompt p { margin: 0 0 0.4rem; }
+.takeover-prompt .takeover-sub { font-size: 0.9rem; color: var(--text); }
+.takeover-actions { display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.6rem; }

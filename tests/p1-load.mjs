@@ -273,7 +273,10 @@ await tab2.waitForSelector(".host-standby", { timeout: 8000 }).catch(() => {});
 check("뒤에 연 탭 = 보기 전용 안내", await tab2.locator(".host-standby").isVisible(), "");
 check("앞 탭은 그대로 진행", !(await host.locator(".host-standby").isVisible()));
 const takeoverAt = Date.now();
-await tab2.click(".host-standby button");
+await tab2.click(".host-standby button"); // 넘겨받기 요청 → 앞 탭에서 [지금 넘기기]
+await host.waitForSelector(".takeover-prompt", { timeout: 8000 }).catch(() => {});
+check("요청 → 앞 탭에 [거절]/[지금 넘기기]", await host.locator(".takeover-prompt").isVisible());
+await host.click(".takeover-grant").catch(() => {});
 await tab2.waitForFunction(() => (window.__llStats?.sent?.["host-rejoined"] || 0) >= 1, null, { timeout: 8000 }).catch(() => {});
 await host.waitForSelector(".host-standby", { timeout: 5000 }).catch(() => {});
 check("[여기서 진행] → 넘겨받음", (await host.locator(".host-standby").isVisible()) && !(await tab2.locator(".host-standby").isVisible()));
@@ -293,6 +296,14 @@ await other.goto(`${BASE}/presenter?room=${roomId}`);
 await other.waitForSelector(".host-standby", { timeout: 8000 }).catch(() => {});
 check("다른 PC 탭 = 보기 전용 안내(Presence)", await other.locator(".host-standby").isVisible());
 check("진행 탭은 그대로", !(await tab2.locator(".host-standby").isVisible()));
+// 진행 탭이 아무것도 안 누르면 20초 뒤 자동으로 넘어간다(버려진 탭 대비)
+await other.click(".host-standby button");
+await tab2.waitForSelector(".takeover-prompt", { timeout: 8000 }).catch(() => {});
+const autoStart = Date.now();
+const autoMoved = await other.waitForSelector(".host-standby", { state: "detached", timeout: 30000 }).then(() => true).catch(() => false);
+const autoSec = (Date.now() - autoStart) / 1000;
+await tab2.waitForSelector(".host-standby", { timeout: 5000 }).catch(() => {});
+check("거절이 없으면 약 20초 뒤 자동으로 넘어감", autoMoved && autoSec >= 17 && autoSec <= 26 && (await tab2.locator(".host-standby").isVisible()), `${autoSec.toFixed(1)}초`);
 
 clearInterval(watcher);
 for (const p of hostPages) if (!p.isClosed()) await pullHostLog(p);

@@ -38,6 +38,19 @@ CREATE INDEX IF NOT EXISTS lecture_game_results_room_idx ON public.lecture_game_
 ALTER TABLE public.lecture_game_results ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.lecture_game_results FROM anon, authenticated;
 
+-- 10/01 get_lecture_room 은 SELECT * 라 새 열(발표자 비밀값 해시)까지 anon 에게 준다 — 해시는 빼고 돌려준다(Loki 리뷰).
+-- 이름·모양·권한은 그대로(앱 서버 room-store.getRoom 이 쓰는 열도 그대로).
+CREATE OR REPLACE FUNCTION public.get_lecture_room(p_id text)
+RETURNS SETOF public.lecture_rooms
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT id, title, slide_url, slide_type, embed_url, canva_design_id, canva_view_url, created_at, NULL::text
+    FROM lecture_rooms WHERE id = p_id;
+$$;
+
 -- 비밀값 → 해시 (앱의 lib/realtime/sha256.ts 와 같은 값)
 CREATE OR REPLACE FUNCTION public._lecture_host_hash(p_host_key text)
 RETURNS text
@@ -138,8 +151,13 @@ BEGIN
   INSERT INTO lecture_game_results (room_id, game_id, game_type, title, started_at, ended_at, results)
   VALUES (
     p_room, v_id, v_type, v_title,
-    CASE WHEN jsonb_typeof(p_payload->'startedAt') = 'number' THEN to_timestamp((p_payload->>'startedAt')::double precision / 1000) END,
-    CASE WHEN jsonb_typeof(p_payload->'endedAt') = 'number' THEN to_timestamp((p_payload->>'endedAt')::double precision / 1000) END,
+    -- 시각은 ms. 2000~2100년 밖이면 비운다(엉뚱한 큰 수로 timestamp 범위 예외가 나지 않게)
+    CASE WHEN jsonb_typeof(p_payload->'startedAt') = 'number'
+              AND (p_payload->>'startedAt')::double precision BETWEEN 946684800000 AND 4102444800000
+         THEN to_timestamp((p_payload->>'startedAt')::double precision / 1000) END,
+    CASE WHEN jsonb_typeof(p_payload->'endedAt') = 'number'
+              AND (p_payload->>'endedAt')::double precision BETWEEN 946684800000 AND 4102444800000
+         THEN to_timestamp((p_payload->>'endedAt')::double precision / 1000) END,
     p_payload
   )
   ON CONFLICT (room_id, game_id) DO NOTHING;

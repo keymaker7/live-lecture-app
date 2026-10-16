@@ -224,6 +224,28 @@ describe("달리기", () => {
     expect(g.s.points).toEqual({ b: 2 + 5 + 30, a: 2 + 5 + 20, c: 2 + 5 + 10 });
   });
 
+  it("총 걸음으로 보내면 묶음 순서가 바뀌어도 걸음을 잃지 않는다(골인 묶음이 앞 묶음보다 먼저 도착)", () => {
+    const c = clock();
+    const g = HostGame.run({ now: c.now, rng: () => 0 }, "g1", 10, 60, 3);
+    g.runStart();
+    g.markBroadcast(c.now());
+    const go = g.s.goAt!;
+    c.set(go);
+    g.tick(c.now());
+    // 폰: 1.0초에 총 7 을 보냄(늦게 도착), 1.3초에 골인 총 10 을 보냄(먼저 도착)
+    expect(g.steps("a", { gid: "g1", total: 10, finishMs: 1300 }, go + 1400)).toBe(10);
+    expect(g.s.finishOrder).toEqual(["a"]);
+    expect(g.s.runners!.a.finishMs).toBe(1300);
+    expect(g.steps("a", { gid: "g1", total: 7 }, go + 1500)).toBe(0); // 늦게 온 작은 총계는 무시(골인 그대로)
+    // 순서 바뀐 중간 묶음: 총 6 → 총 4 → 총 9 — 6·9 만 반영, 잃는 것 없음
+    expect(g.steps("b", { gid: "g1", total: 6 }, go + 900)).toBe(6);
+    expect(g.steps("b", { gid: "g1", total: 4 }, go + 950)).toBe(0);
+    expect(g.steps("b", { gid: "g1", total: 9 }, go + 1300)).toBe(3);
+    expect(g.s.runners!.b.steps).toBe(9);
+    // 총계를 부풀려도 초당 8걸음 통장까지만(0.2초 = 미리 8 + 1.6 → 9걸음)
+    expect(g.steps("c", { gid: "g1", total: 999 }, go + 200)).toBe(9);
+  });
+
   it("제한 시간이 끝나면 골인 못 해도 결과", () => {
     const c = clock();
     const g = HostGame.run({ now: c.now, rng: () => 0 }, "g1", 300, 10, 3);

@@ -405,16 +405,28 @@ export class HostGame {
     if (payload.gid !== s.id) return 0;
     if (receivedAt < s.goAt) return 0; // 카운트다운 중 탭 무효
     if (s.endAt != null && receivedAt > s.endAt + LATE_GRACE_MS) return 0;
-    const seq = Number(payload.seq);
     let r = s.runners![pid];
     if (!r) {
       r = { steps: 0, finishedAt: null, lane: Object.keys(s.runners!).length, budget: newStepBudget(s.goAt), seq: -1 };
       s.runners![pid] = r;
       this.addPlayer(pid);
     }
-    if (!Number.isInteger(seq) || seq <= r.seq || r.finishedAt != null) return 0;
-    r.seq = seq;
-    const ok = acceptSteps(r.budget, payload.count, receivedAt, s.goAt);
+    if (r.finishedAt != null) return 0;
+    // 폰은 지금까지 누른 「총 걸음」을 보낸다 — 묶음이 늦게·순서가 바뀌어 와도 잃는 걸음이 없다(더 작은 총계는 그냥 무시).
+    // 예전 폰(총계 없이 묶음 수 count + seq)도 받는다.
+    let want: number;
+    if (payload.total !== undefined) {
+      const total = Math.floor(Number(payload.total));
+      if (!Number.isFinite(total)) return 0;
+      want = Math.min(s.goal!, total) - r.steps;
+    } else {
+      const seq = Number(payload.seq);
+      if (!Number.isInteger(seq) || seq <= r.seq) return 0;
+      r.seq = seq;
+      want = Number(payload.count);
+    }
+    if (!(want > 0)) return 0;
+    const ok = acceptSteps(r.budget, want, receivedAt, s.goAt);
     if (!ok) return 0;
     r.steps = Math.min(s.goal!, r.steps + ok);
     this.fx({ t: "step", pid, steps: r.steps });

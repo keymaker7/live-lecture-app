@@ -14,6 +14,11 @@ export function newHostKey(): string {
 
 export const hostKeyHash = (hk: string) => sha256Hex(hk);
 
+/** 「종료」 — 공용 PC 에 발표자 자격이 남지 않게 */
+export function clearHostKey(roomId: string) {
+  try { localStorage.removeItem(key(roomId)); } catch { /* 없음 */ }
+}
+
 export function saveHostKey(roomId: string, hk: string) {
   if (VALID.test(hk)) writeText(key(roomId), hk);
 }

@@ -10,6 +10,9 @@ import { PlazaStage, type PlazaHandle } from "@/components/slides-app/PlazaStage
 import { GameStage, type GameView } from "@/components/slides-app/GameStage";
 import { GameDock } from "@/components/slides-app/GameDock";
 import { RankBoard } from "@/components/slides-app/RankBoard";
+import { StandbyBox, TakeoverPromptBox } from "@/components/slides-app/TakeoverNotice";
+import { clearHostKey } from "@/lib/realtime/host-key";
+import { canvaEmbedSrc } from "@/lib/slides-parser";
 import type { ResultsDbStatus, Standing } from "@/hooks/useSlidesRealtime";
 import { readText, writeText } from "@/lib/realtime/storage";
 
@@ -98,7 +101,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
   const canvaContainerRef = useRef<HTMLDivElement>(null);
   const prevQCountRef = useRef(0);
 
-  const { on, off, emit, ready, setInitialState, hostStatus, takeover, getResults, hostSecret } = useSlidesRealtime(roomId, "presenter");
+  const { on, off, emit, ready, setInitialState, hostStatus, takeover, takeoverPrompt, requestState, answerTakeover, getResults, hostSecret } = useSlidesRealtime(roomId, "presenter");
   // 종합 순위(게임이 끝날 때마다 다시 계산돼 온다)·DB 저장 상태
   const [standings, setStandings] = useState<Standing[]>([]);
   const [gamesCount, setGamesCount] = useState(0);
@@ -236,6 +239,7 @@ export function PresentPage({ roomId }: PresentPageProps) {
 
   useEffect(() => {
     if (!room || room.slideType !== "canva" || !room.canvaDesignId) return;
+    if (canvaEmbedSrc(room.canvaDesignId, room.canvaViewUrl, room.slideUrl)) return; // iframe 직접 — SDK 기다림 없음
     const t = setTimeout(() => {
       if (canvaContainerRef.current && !canvaContainerRef.current.querySelector("iframe")) {
         setShowFallback(true);
@@ -284,10 +288,12 @@ export function PresentPage({ roomId }: PresentPageProps) {
   }
 
   const slideTypeLabel = room.slideType === "canva" ? "Canva" : room.slideType === "google" ? "Google" : "Embed";
+  // 캔바: 공유 열쇠가 있으면 공식 퍼가기 주소로 iframe 직접(SDK 는 열쇠를 빼고 열어 403). 없으면 예전처럼 SDK.
+  const canvaSrc = room.slideType === "canva" ? canvaEmbedSrc(room.canvaDesignId, room.canvaViewUrl, room.slideUrl) : null;
 
   return (
     <>
-      {room.slideType === "canva" && room.canvaDesignId && (
+      {room.slideType === "canva" && room.canvaDesignId && !canvaSrc && (
         <Script
           src="https://sdk.canva.com/v1/embed.js"
           onLoad={() => {
@@ -328,7 +334,16 @@ export function PresentPage({ roomId }: PresentPageProps) {
         </aside>
 
         <main className="slide-area">
-          {room.slideType === "canva" && room.canvaDesignId ? (
+          {canvaSrc ? (
+            <iframe
+              src={canvaSrc}
+              className={`canva-frame ${slideReady ? "" : "hidden"}`}
+              allowFullScreen
+              allow="fullscreen"
+              onLoad={() => setSlideReady(true)}
+              style={{ width: "100%", height: "100%", border: "none" }}
+            />
+          ) : room.slideType === "canva" && room.canvaDesignId ? (
             <div ref={canvaContainerRef} className="canva-container">
               <div
                 className="canva-embed"
@@ -583,13 +598,8 @@ export function PresentPage({ roomId }: PresentPageProps) {
       )}
       {rankOpen && <RankBoard standings={standings} games={gamesCount} onClose={() => setRankOpen(false)} />}
 
-      {hostStatus === "standby" && (
-        <div className="host-standby" role="alert">
-          <p>이미 다른 창에서 이 연수를 진행 중입니다.</p>
-          <p className="host-standby-sub">이 창은 보기 전용입니다. 여기서 이어서 진행하려면 아래 버튼을 누르세요.</p>
-          <button className="btn-primary" onClick={() => { void takeover(); }}>여기서 진행</button>
-        </div>
-      )}
+      {hostStatus === "standby" && <StandbyBox request={requestState} onRequest={takeover} />}
+      {hostStatus === "active" && takeoverPrompt && <TakeoverPromptBox prompt={takeoverPrompt} onAnswer={answerTakeover} />}
 
       <header className="present-topbar">
         <span className="present-title">{room.title}</span>
@@ -617,7 +627,18 @@ export function PresentPage({ roomId }: PresentPageProps) {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();
           }}>전체화면</button>
-          <Link href="/" className="btn-ghost">종료</Link>
+          <Link
+            href="/"
+            className="btn-ghost topbar-end"
+            onClick={(e) => {
+              // 공용 PC 에 발표자 자격이 남지 않게(Loki 🟢4) — 끝낼 때 이 PC 의 발표자 비밀값을 지운다
+              if (!window.confirm("연수를 끝낼까요?\n\n이 PC 에 남은 발표자 자격(비밀값)도 지웁니다. 나중에 이어서 진행하려면 게임 탭의 🔑 발표자 링크가 필요해요 — 필요하면 [취소] 후 먼저 복사해 두세요.")) {
+                e.preventDefault();
+                return;
+              }
+              clearHostKey(roomId);
+            }}
+          >종료</Link>
         </div>
       </header>
     </>

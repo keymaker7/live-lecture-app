@@ -14,6 +14,33 @@ interface PhoneGameProps {
   rank?: [number, number, number] | null;
 }
 
+const ANSWER_GAP_MS = 500;
+
+type PendingAnswer = { timer: ReturnType<typeof setTimeout>; data: Record<string, unknown> };
+
+/** 0.5초에 한 번만 보내되, 기다리는 사이 마지막으로 고른 것은 꼭 보낸다 */
+function sendThrottled(
+  refs: { last: { current: number }; pending: { current: PendingAnswer | null } },
+  data: Record<string, unknown>,
+  send: (d: Record<string, unknown>) => void,
+) {
+  const pending = refs.pending.current;
+  if (pending) {
+    pending.data = data; // 기다리는 중이면 마지막 것으로 바꿔 둔다
+    return;
+  }
+  const fire = (d: Record<string, unknown>) => {
+    refs.last.current = Date.now();
+    send(d);
+  };
+  const wait = refs.last.current + ANSWER_GAP_MS - Date.now();
+  if (wait <= 0) {
+    fire(data);
+    return;
+  }
+  const p: PendingAnswer = { data, timer: setTimeout(() => { refs.pending.current = null; fire(p.data); }, wait) };
+  refs.pending.current = p;
+}
 const MC_COLORS = ["#ff6b6b", "#4dabf7", "#f2b705", "#40c057"];
 const MC_LABELS = ["①", "②", "③", "④"];
 const HANDS = [
@@ -35,12 +62,17 @@ export function PhoneGame({ game, pid, emit, rank }: PhoneGameProps) {
   const [now, setNow] = useState(() => Date.now());
   const [input, setInput] = useState("");
   const buzzedRef = useRef("");
+  // 답 바꾸기는 0.5초에 한 번만 보낸다(마지막 고른 것은 꼭 보냄) — 연타가 메시지 한도를 먹지 않게(Loki 🟢1)
+  const lastAnswerSentRef = useRef(0);
+  const pendingAnswerRef = useRef<PendingAnswer | null>(null);
+  useEffect(() => () => { if (pendingAnswerRef.current) clearTimeout(pendingAnswerRef.current.timer); }, []);
 
   // 달리기
   const [goAt, setGoAt] = useState<{ id: string; at: number }>({ id: "", at: 0 });
   const [steps, setSteps] = useState(0);
   const stepsRef = useRef(0);
-  const unsentRef = useRef(0);
+  /** 발표자에게 마지막으로 보낸 총 걸음 — 총계를 보내므로 묶음 순서가 바뀌어도 걸음을 잃지 않는다 */
+  const sentTotalRef = useRef(0);
   // 폰도 발표자와 같은 규칙(초당 8걸음, GO 때 8걸음 미리)으로 센다 — 더 빨리 눌러 생긴 걸음은
   // 발표자가 버리니, 폰이 세면 폰은 골인인데 발표자 쪽은 영영 못 채운다.
   const bankRef = useRef({ bank: MAX_STEPS_PER_SEC, at: 0 });
@@ -53,10 +85,10 @@ export function PhoneGame({ game, pid, emit, rank }: PhoneGameProps) {
   }
 
   const sendSteps = (finishMs?: number) => {
-    const n = unsentRef.current;
-    if (n <= 0) return;
-    unsentRef.current = 0;
-    void emit("game-steps", finishMs === undefined ? { gid: g.id, count: n } : { gid: g.id, count: n, finishMs });
+    const total = stepsRef.current;
+    if (total <= sentTotalRef.current) return;
+    sentTotalRef.current = total;
+    void emit("game-steps", finishMs === undefined ? { gid: g.id, total } : { gid: g.id, total, finishMs });
   };
   const mine = choice.key === qKey ? choice : { key: qKey, value: null, tries: 0, text: "" };
   const jailed = !!g.out?.includes(pid);
@@ -82,21 +114,26 @@ export function PhoneGame({ game, pid, emit, rank }: PhoneGameProps) {
   // 새 달리기(카운트다운 시작) — 걸음·통장 초기화. room-state 가 올 때마다 바뀌는 g.run 에 묶지 않는다.
   useEffect(() => {
     stepsRef.current = 0;
-    unsentRef.current = 0;
+    sentTotalRef.current = 0;
     bankRef.current = { bank: MAX_STEPS_PER_SEC, at: goAt.at };
   }, [goAt.id, goAt.at]);
 
-  // 달리기: 누른 횟수를 묶어서 보낸다(묶음 간격은 발표자가 인원에 맞춰 정함)
+  // 달리기: 누른 횟수를 묶어서 보낸다(묶음 간격은 발표자가 인원에 맞춰 정함).
+  // 폰마다 첫 묶음을 0~간격 사이로 늦춰 박자를 흩는다 — 같은 방송을 같이 받은 60대가 한 순간에 보내지 않게(Loki 🟡2).
+  // room-state 가 올 때마다 새 객체인 g.run 이 아니라 간격 숫자에만 묶는다(묶으면 박자가 다시 맞춰진다).
+  const batchMs = g.type === "run" ? g.run?.batchMs : undefined;
   useEffect(() => {
-    if (g.type !== "run" || !g.run || goAt.id !== g.id) return;
-    const t = setInterval(() => {
-      const n = unsentRef.current;
-      if (n <= 0) return;
-      unsentRef.current = 0;
-      void emit("game-steps", { gid: g.id, count: n });
-    }, g.run.batchMs);
-    return () => clearInterval(t);
-  }, [g.type, g.id, g.run, goAt.id, emit]);
+    if (g.type !== "run" || !batchMs || goAt.id !== g.id) return;
+    const flush = () => {
+      const total = stepsRef.current;
+      if (total <= sentTotalRef.current) return;
+      sentTotalRef.current = total;
+      void emit("game-steps", { gid: g.id, total });
+    };
+    let t: ReturnType<typeof setInterval> | undefined;
+    const d = setTimeout(() => { flush(); t = setInterval(flush, batchMs); }, Math.random() * batchMs);
+    return () => { clearTimeout(d); if (t) clearInterval(t); };
+  }, [g.type, g.id, batchMs, goAt.id, emit]);
 
   const clientMs = () => Math.max(0, Date.now() - (openedAt.key === qKey ? openedAt.at : Date.now()));
 
@@ -113,9 +150,14 @@ export function PhoneGame({ game, pid, emit, rank }: PhoneGameProps) {
     if (mine.value === value) return;
     setChoice({ key: qKey, value, tries: mine.tries + 1, text: "" });
     buzz(20);
-    if (g.type === "quiz") void emit("game-answer", { gid: g.id, qno: g.q?.no, choice: value, clientMs: clientMs() });
-    else void emit("game-answer", { gid: g.id, round: g.round, choice: value });
+    const data = g.type === "quiz"
+      ? { gid: g.id, qno: g.q?.no, choice: value, clientMs: clientMs() }
+      : { gid: g.id, round: g.round, choice: value };
+    sendAnswer(data);
   };
+
+  const sendAnswer = (data: Record<string, unknown>) =>
+    sendThrottled({ last: lastAnswerSentRef, pending: pendingAnswerRef }, data, (d) => void emit("game-answer", d));
 
   // now 는 0.2초마다 바뀌는 시계라 문제를 받은 순간보다 조금 이를 수 있다 → 제한 시간을 넘지 않게
   const left = g.type === "quiz" && open && g.q && openedAt.key === qKey
@@ -169,7 +211,6 @@ export function PhoneGame({ game, pid, emit, rank }: PhoneGameProps) {
             if (b.bank < 1) return; // 초당 8걸음 넘게는 안 센다
             b.bank -= 1;
             stepsRef.current += 1;
-            unsentRef.current += 1;
             setSteps(stepsRef.current);
             // 골인은 묶음을 기다리지 않고 바로, 폰이 잰 골인 시간(GO 부터)과 함께 — 등수는 이 시간으로
             if (stepsRef.current >= goal) sendSteps(t - goAt.at);
